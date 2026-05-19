@@ -8,6 +8,8 @@ export type ExpenseCategory = 'food'|'transport'|'leisure'|'shopping'|'health'|'
 export const CAT_LABELS: Record<ExpenseCategory, string> = { food:'Comida', transport:'Transporte', leisure:'Ocio', shopping:'Compras', health:'Salud', housing:'Vivienda', subscriptions:'Suscripciones', other:'Otro' }
 export const CAT_COLORS: Record<ExpenseCategory, string> = { food:'#1D9E75', transport:'#534AB7', leisure:'#BA7517', shopping:'#993556', health:'#3B6D11', housing:'#185FA5', subscriptions:'#D85A30', other:'#5F5E5A' }
 export type Expense = { id:string; user_id:string; name:string; amount:number; category:ExpenseCategory; expense_date:string; is_recurring:boolean; note:string|null; created_at:string }
+export type RecurringExpense = { id:string; user_id:string; name:string; amount:number; category:ExpenseCategory; frequency:'weekly'|'fortnightly'|'monthly'; is_active:boolean; created_at:string }
+export function weeklyExpenseEquivalent(exp: Pick<RecurringExpense,'amount'|'frequency'>): number { return exp.amount / FREQ_DIVISORS[exp.frequency] }
 export type DebtPocket = { id:string; user_id:string; name:string; target_amount:number; target_currency:string; current_amount_aud:number; weekly_goal_aud:number; deadline:string|null; emoji:string; created_at:string }
 export type SavingsGoal = { id:string; user_id:string; name:string; target_amount:number; current_amount:number; deadline:string|null; color:string }
 export function weeklyEquivalent(source: Pick<IncomeSource,'amount'|'frequency'>): number { return source.amount / FREQ_DIVISORS[source.frequency] }
