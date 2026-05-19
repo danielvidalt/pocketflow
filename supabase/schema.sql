@@ -1,0 +1,16 @@
+create extension if not exists "uuid-ossp";
+create table income_sources (id uuid primary key default uuid_generate_v4(), user_id uuid references auth.users(id) on delete cascade not null, name text not null, amount numeric(10,2) not null check (amount > 0), frequency text not null check (frequency in ('weekly','fortnightly','monthly','annual','once')), day_of_week smallint check (day_of_week between 0 and 6), color text not null default '#185FA5', icon text not null default 'briefcase', is_active boolean not null default true, created_at timestamptz default now());
+create table income_entries (id uuid primary key default uuid_generate_v4(), user_id uuid references auth.users(id) on delete cascade not null, source_id uuid references income_sources(id) on delete set null, amount numeric(10,2) not null check (amount > 0), received_at date not null default current_date, note text, created_at timestamptz default now());
+create table expenses (id uuid primary key default uuid_generate_v4(), user_id uuid references auth.users(id) on delete cascade not null, name text not null, amount numeric(10,2) not null check (amount > 0), category text not null default 'other' check (category in ('food','transport','leisure','shopping','health','housing','subscriptions','other')), expense_date date not null default current_date, is_recurring boolean not null default false, note text, created_at timestamptz default now());
+create table debt_pockets (id uuid primary key default uuid_generate_v4(), user_id uuid references auth.users(id) on delete cascade not null, name text not null, target_amount numeric(12,2) not null, target_currency text not null default 'AUD', current_amount_aud numeric(10,2) not null default 0, weekly_goal_aud numeric(10,2), deadline date, emoji text default '💰', created_at timestamptz default now());
+create table savings_goals (id uuid primary key default uuid_generate_v4(), user_id uuid references auth.users(id) on delete cascade not null, name text not null, target_amount numeric(10,2) not null, current_amount numeric(10,2) not null default 0, deadline date, color text not null default '#185FA5', created_at timestamptz default now());
+alter table income_sources enable row level security;
+alter table income_entries enable row level security;
+alter table expenses enable row level security;
+alter table debt_pockets enable row level security;
+alter table savings_goals enable row level security;
+create policy "own" on income_sources for all using (auth.uid() = user_id);
+create policy "own" on income_entries for all using (auth.uid() = user_id);
+create policy "own" on expenses for all using (auth.uid() = user_id);
+create policy "own" on debt_pockets for all using (auth.uid() = user_id);
+create policy "own" on savings_goals for all using (auth.uid() = user_id);
