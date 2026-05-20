@@ -12,6 +12,14 @@ function fmtDay(dateStr: string) {
   return format(parseISO(dateStr), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
 }
 
+const D = '\x1F' // ASCII unit separator — invisible, never typed by users
+function encFixed(name: string, date: string) { return `${name}${D}${date}` }
+function decFixed(raw: string): { name: string; date: string } {
+  const i = raw.indexOf(D)
+  if (i === -1) return { name: raw, date: '' }
+  return { name: raw.slice(0, i), date: raw.slice(i + 1) }
+}
+
 const CATS=Object.entries(CAT_LABELS) as [ExpenseCategory,string][]
 const ICONS: Record<ExpenseCategory,string>={food:'🍽️',transport:'🚌',leisure:'🎬',shopping:'🛍️',health:'💊',housing:'🏠',subscriptions:'📱',other:'···'}
 const FIXED_FREQS: Array<{id:'weekly'|'fortnightly'|'monthly',label:string}> = [
@@ -58,7 +66,8 @@ export default function GastosPage(){
 
   async function saveFixed(){
     const amt=parseFloat(fAmount); if(!amt||amt<=0)return; setFSaving(true)
-    await addRecurringExpense({name:fName.trim()||CAT_LABELS[fCat],amount:amt,category:fCat,frequency:fFreq,is_active:true,start_date:fDate})
+    const rawName=encFixed(fName.trim()||CAT_LABELS[fCat],fDate)
+    await addRecurringExpense({name:rawName,amount:amt,category:fCat,frequency:fFreq,is_active:true})
     setFAmount('');setFName('');setFCat('other');setFFreq('monthly');setFDate(today);setFSaving(false);fRef.current?.focus()
   }
 
@@ -173,12 +182,12 @@ export default function GastosPage(){
             <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>ACTIVOS</span>
             <span style={{fontSize:10,fontWeight:600,color:'var(--text3)'}}>{activeFixed.length} gastos</span>
           </div>
-          {activeFixed.map((e:RecurringExpense)=>(
+          {activeFixed.map((e:RecurringExpense)=>{const {name:eName,date:eDate}=decFixed(e.name);const startDate=eDate||e.created_at.split('T')[0];return(
             <div key={e.id} className="flex items-center gap-2.5 py-2.5" style={{borderBottom:'0.5px solid var(--border)'}}>
               <div style={{fontSize:18,width:34,height:34,borderRadius:9,background:CAT_COLORS[e.category]+'22',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{ICONS[e.category]}</div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,color:'var(--text1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.name}</div>
-                <div style={{fontSize:11,color:'var(--text3)'}}>{FREQ_LABELS[e.frequency]} · {formatAUD(weeklyExpenseEquivalent(e))}/sem · desde {fmtDay(e.start_date||e.created_at.split('T')[0])}</div>
+                <div style={{fontSize:13,color:'var(--text1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{eName}</div>
+                <div style={{fontSize:11,color:'var(--text3)'}}>{FREQ_LABELS[e.frequency]} · {formatAUD(weeklyExpenseEquivalent(e))}/sem · desde {fmtDay(startDate)}</div>
               </div>
               <div style={{textAlign:'right',flexShrink:0}}>
                 <div style={{fontSize:13,fontWeight:500,color:'var(--red)'}}>{formatAUD(e.amount)}</div>
@@ -186,7 +195,7 @@ export default function GastosPage(){
               </div>
               <button onClick={()=>deleteRecurringExpense(e.id)} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:18,lineHeight:1}}>×</button>
             </div>
-          ))}
+          )})})
         </div>}
       </div>
     </>}
