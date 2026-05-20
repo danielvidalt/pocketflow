@@ -162,12 +162,7 @@ export default function HomePage(){
           <div className="section-label" style={{margin:0}}>Hoy gastaste</div>
           <span style={{fontSize:16,fontWeight:700,color:'var(--red)'}}>{formatAUD(todayTotal)}</span>
         </div>
-        {todayExps.length===0&&<p style={{fontSize:13,color:'var(--text3)',paddingBottom:4}}>Sin gastos registrados hoy</p>}
-        {todayExps.map((exp,i)=>(<div key={exp.id} className="flex items-center justify-between gap-3 py-2" style={{borderBottom:i<todayExps.length-1?'0.5px solid var(--border)':'none'}}>
-          <div style={{fontSize:13,color:'var(--text1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{exp.name}</div>
-          <span style={{fontSize:13,fontWeight:500,color:'var(--red)',whiteSpace:'nowrap',flexShrink:0}}>−{formatAUD(exp.amount)}</span>
-        </div>))}
-        <BtnGhost className="mt-2.5"><Link href="/gastos/historial" className="w-full flex items-center justify-center" style={{color:'var(--text2)',fontSize:13}}>Ver todos los gastos</Link></BtnGhost>
+        <BtnGhost><Link href="/gastos" className="w-full flex items-center justify-center" style={{color:'var(--text2)',fontSize:13}}>Ver gastos</Link></BtnGhost>
       </div>
     </div>
 

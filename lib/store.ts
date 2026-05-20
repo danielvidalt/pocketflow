@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { format } from 'date-fns'
 import { getClient } from './supabase'
 import type { IncomeSource, IncomeEntry, Expense, DebtPocket, SavingsGoal, RecurringExpense, FixedExpenseAllocation } from './types'
-import { weeklyEquivalent, weeklyExpenseEquivalent } from './types'
+import { weeklyEquivalent, FREQ_DIVISORS } from './types'
 
 // Categorías que el CHECK constraint de la DB acepta actualmente.
 // Si agregas una nueva categoría en types.ts también debes correr la migración en Supabase.
@@ -230,7 +230,30 @@ export const usePocketFlow = create<State>((set,get) => ({
   },
 
   weeklyIncome: ()=>get().incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0),
-  weeklyFixedCosts: ()=>get().recurringExpenses.filter(e=>e.is_active).reduce((sum,e)=>sum+weeklyExpenseEquivalent(e),0),
+  weeklyFixedCosts: () => {
+    const { recurringExpenses, fixedExpenseAllocations } = get()
+    const now = new Date()
+    const todayStr = format(now, 'yyyy-MM-dd')
+    return recurringExpenses.filter(e => e.is_active).reduce((sum, e) => {
+      let start: string, end: string
+      if (e.frequency === 'weekly') {
+        const day = now.getDay(); const diff = (day === 0 ? -6 : 1) - day
+        const mon = new Date(now); mon.setDate(now.getDate() + diff)
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+        start = format(mon, 'yyyy-MM-dd'); end = format(sun, 'yyyy-MM-dd')
+      } else if (e.frequency === 'fortnightly') {
+        const s = new Date(now); s.setDate(now.getDate() - 13)
+        start = format(s, 'yyyy-MM-dd'); end = todayStr
+      } else {
+        start = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd')
+        end = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd')
+      }
+      const allocated = fixedExpenseAllocations
+        .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= start && a.allocated_at <= end)
+        .reduce((s, a) => s + a.amount, 0)
+      return sum + allocated / FREQ_DIVISORS[e.frequency]
+    }, 0)
+  },
   todayExpenses: ()=>{ const t=new Date().toISOString().split('T')[0]; return get().expenses.filter(e=>e.expense_date===t) },
   weekExpenses: ()=>{ const {mon,sun}=getWeekRange(); return get().expenses.filter(e=>{const d=new Date(e.expense_date);return d>=mon&&d<=sun}) },
 }))
