@@ -1,12 +1,13 @@
 'use client'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { usePocketFlow } from '@/lib/store'
-import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory, FREQ_LABELS, weeklyExpenseEquivalent } from '@/lib/types'
+import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory, FREQ_LABELS } from '@/lib/types'
 import type { RecurringExpense } from '@/lib/types'
-import { MetricCard, SectionHeader, EmptyState } from '@/components/ui'
+import { MetricCard, SectionHeader, EmptyState, ProgressBar } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { parseISO, format, subDays } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { Plus, X } from 'lucide-react'
 
 // Siempre usa hora LOCAL (evita el bug UTC vs hora australiana)
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
@@ -23,6 +24,25 @@ function decFixed(raw: string): { name: string; date: string } {
   return { name: raw.slice(0, i), date: raw.slice(i + 1) }
 }
 
+function periodRange(frequency: 'weekly'|'fortnightly'|'monthly') {
+  const now = new Date()
+  const todayStr = format(now, 'yyyy-MM-dd')
+  if (frequency === 'weekly') {
+    const day = now.getDay(); const diff = (day === 0 ? -6 : 1) - day
+    const mon = new Date(now); mon.setDate(now.getDate() + diff)
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    return { start: format(mon, 'yyyy-MM-dd'), end: format(sun, 'yyyy-MM-dd') }
+  }
+  if (frequency === 'fortnightly') {
+    const start = new Date(now); start.setDate(now.getDate() - 13)
+    return { start: format(start, 'yyyy-MM-dd'), end: todayStr }
+  }
+  return {
+    start: format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'),
+    end: format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd'),
+  }
+}
+
 const CATS = Object.entries(CAT_LABELS) as [ExpenseCategory, string][]
 const ICONS: Record<ExpenseCategory, string> = { food: '🍽️', supermarket: '🛒', transport: '🚌', leisure: '🎬', shopping: '🛍️', health: '💊', housing: '🏠', subscriptions: '📱', other: '···' }
 const FIXED_FREQS: Array<{ id: 'weekly' | 'fortnightly' | 'monthly'; label: string }> = [
@@ -32,7 +52,7 @@ const FIXED_FREQS: Array<{ id: 'weekly' | 'fortnightly' | 'monthly'; label: stri
 ]
 
 export default function GastosPage() {
-  const { expenses, addExpense, deleteExpense, weeklyIncome, weeklyFixedCosts, recurringExpenses, addRecurringExpense, deleteRecurringExpense, incomeEntries, incomeSources } = usePocketFlow()
+  const { expenses, addExpense, deleteExpense, weeklyIncome, weeklyFixedCosts, recurringExpenses, addRecurringExpense, deleteRecurringExpense, fixedExpenseAllocations, addFixedAllocation, deleteFixedAllocation, incomeEntries, incomeSources } = usePocketFlow()
   const [tab, setTab] = useState<'daily' | 'fixed'>('daily')
 
   // ── Daily tab ──────────────────────────────────────────────────────────────
@@ -111,30 +131,13 @@ export default function GastosPage() {
   }
 
   // ── Fixed tab ──────────────────────────────────────────────────────────────
-  const [fAmount, setFAmount] = useState('')
-  const [fName, setFName] = useState('')
-  const [fCat, setFCat] = useState<ExpenseCategory>('other')
-  const [fFreq, setFFreq] = useState<'weekly' | 'fortnightly' | 'monthly'>('monthly')
-  const [fSaving, setFSaving] = useState(false)
-  const [fSaveError, setFSaveError] = useState<string|null>(null)
-  const [fDate, setFDate] = useState(localToday)
-  const fRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { if (tab === 'fixed') fRef.current?.focus() }, [tab])
+  const [showNewFixed, setShowNewFixed] = useState(false)
+  const [addingToFixed, setAddingToFixed] = useState<string|null>(null)
+  const [fixedAddAmt, setFixedAddAmt] = useState('')
+  const [fixedAddDate, setFixedAddDate] = useState(today)
+  const [fixedSaving, setFixedSaving] = useState(false)
   const weeklyFixed = weeklyFixedCosts()
   const activeFixed = recurringExpenses.filter(e => e.is_active)
-
-  async function saveFixed() {
-    const amt = parseFloat(fAmount); if (!amt || amt <= 0) return
-    setFSaving(true); setFSaveError(null)
-    try {
-      await addRecurringExpense({ name: encFixed(fName.trim() || CAT_LABELS[fCat], fDate), amount: amt, category: fCat, frequency: fFreq, is_active: true })
-      setFAmount(''); setFName(''); setFCat('other'); setFFreq('monthly'); setFDate(localToday())
-    } catch (e: any) {
-      setFSaveError(e?.message || 'Error al guardar. Intentá de nuevo.')
-    } finally {
-      setFSaving(false); fRef.current?.focus()
-    }
-  }
 
   return (<>
     <SectionHeader title="Gastos" subtitle={format(new Date(), "EEEE d 'de' MMMM", { locale: es })} />
@@ -252,74 +255,178 @@ export default function GastosPage() {
         <MetricCard label="Costo semanal" value={formatAUD(weeklyFixed)} valueColor="var(--red)" />
         <MetricCard label="Costo mensual" value={formatAUD(weeklyFixed * 4.33)} valueColor="var(--text2)" />
       </div>
-      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--border)', flexShrink: 0 }}>
-        <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 500 }}>Agregar gasto fijo</div>
-        <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+      <div className="scroll-area" style={{ padding: '12px 16px 16px' }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Sobres de gasto fijo</span>
+          <button onClick={() => setShowNewFixed(true)} style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg2)', border: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <Plus size={14} color="var(--text2)" strokeWidth={1.7} />
+          </button>
+        </div>
+        {activeFixed.length === 0 && <EmptyState message="Tocá + para agregar tu primer gasto fijo" />}
+        {activeFixed.map((e: RecurringExpense) => {
+          const { name: eName } = decFixed(e.name)
+          const color = CAT_COLORS[e.category]
+          const period = periodRange(e.frequency)
+          const entries = fixedExpenseAllocations
+            .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
+            .sort((a, b) => b.allocated_at.localeCompare(a.allocated_at))
+          const allocated = entries.reduce((s, a) => s + a.amount, 0)
+          const pct = Math.min(100, e.amount > 0 ? (allocated / e.amount) * 100 : 0)
+          const funded = pct >= 100
+
+          return (
+            <div key={e.id} className="card" style={{ marginBottom: 10, borderLeft: `3px solid ${color}` }}>
+              <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: 16 }}>{ICONS[e.category]}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text1)' }}>{eName}</span>
+                </div>
+                <button onClick={() => deleteRecurringExpense(e.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X size={14} /></button>
+              </div>
+              <div className="flex items-baseline gap-2" style={{ marginBottom: 2 }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text1)' }}>{formatAUD(allocated)}</div>
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>de {formatAUD(e.amount)}</div>
+              </div>
+              <div style={{ fontSize: 11, color: funded ? 'var(--green)' : 'var(--text3)', marginBottom: 8, fontWeight: funded ? 600 : 400 }}>
+                {FREQ_LABELS[e.frequency]} · {funded ? '✓ Completado' : `Faltan ${formatAUD(e.amount - allocated)}`}
+              </div>
+              <ProgressBar percent={pct} color={funded ? 'var(--green)' : color} height={8} />
+
+              {entries.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid var(--border)' }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Este período</span>
+                  {entries.map(a => (
+                    <div key={a.id} className="flex items-center gap-2 py-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDay(a.allocated_at)}</div>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color, whiteSpace: 'nowrap' }}>+{formatAUD(a.amount)}</span>
+                      <button onClick={() => deleteFixedAllocation(a.id)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {addingToFixed === e.id ? (
+                <div style={{ marginTop: 10 }}>
+                  <div className="flex gap-2 items-center" style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--text3)' }}>$</span>
+                    <input type="number" inputMode="decimal" value={fixedAddAmt} autoFocus
+                      onChange={ev => setFixedAddAmt(ev.target.value)} placeholder="0.00"
+                      style={{ flex: 1, fontSize: 22, fontWeight: 600, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none', borderBottom: `2px solid ${color}`, paddingBottom: 2 }} />
+                  </div>
+                  <div style={{ position: 'relative', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color, background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      📅 {fmtDay(fixedAddDate)}
+                    </div>
+                    <input type="date" value={fixedAddDate} onChange={ev => setFixedAddDate(ev.target.value || today)}
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={async () => {
+                      const amt = parseFloat(fixedAddAmt); if (!amt || amt <= 0) return
+                      setFixedSaving(true)
+                      await addFixedAllocation(e.id, amt, fixedAddDate)
+                      setFixedAddAmt(''); setFixedAddDate(today); setAddingToFixed(null); setFixedSaving(false)
+                    }} disabled={fixedSaving || !fixedAddAmt}
+                      style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: color, color: '#fff', border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: (!fixedAddAmt || fixedSaving) ? .5 : 1 }}>
+                      {fixedSaving ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button onClick={() => { setAddingToFixed(null); setFixedAddAmt('') }}
+                      style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: 13 }}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { setAddingToFixed(e.id); setFixedAddDate(today) }}
+                  style={{ width: '100%', marginTop: 10, padding: 9, borderRadius: 'var(--radius-sm)', background: color + '22', color, fontSize: 12, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
+                  + Agregar al sobre
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {showNewFixed && <NewFixedModal onClose={() => setShowNewFixed(false)} onSave={addRecurringExpense} />}
+    </>}
+    <BottomNav />
+  </>)
+}
+
+function NewFixedModal({ onClose, onSave }: { onClose: () => void; onSave: (d: any) => Promise<void> }) {
+  const today = localToday()
+  const [fAmount, setFAmount] = useState('')
+  const [fName, setFName] = useState('')
+  const [fCat, setFCat] = useState<ExpenseCategory>('housing')
+  const [fFreq, setFFreq] = useState<'weekly' | 'fortnightly' | 'monthly'>('monthly')
+  const [fDate, setFDate] = useState(today)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    const amt = parseFloat(fAmount); if (!amt || amt <= 0) return
+    setSaving(true); setError(null)
+    try {
+      await onSave({ name: encFixed(fName.trim() || CAT_LABELS[fCat], fDate), amount: amt, category: fCat, frequency: fFreq, is_active: true })
+      onClose()
+    } catch (e: any) {
+      setError(e?.message || 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
+      <div className="slide-up" style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: 20 }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text1)' }}>Nuevo gasto fijo</span>
+          <button onClick={onClose}><X size={20} color="var(--text3)" /></button>
+        </div>
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Monto</label>
+        <div className="flex items-center gap-2" style={{ marginBottom: 14 }}>
           <span style={{ fontSize: 22, fontWeight: 600, color: 'var(--text3)' }}>$</span>
-          <input ref={fRef} type="number" inputMode="decimal" value={fAmount} onChange={e => setFAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveFixed()} placeholder="0.00"
+          <input type="number" inputMode="decimal" autoFocus value={fAmount} onChange={e => setFAmount(e.target.value)}
+            placeholder="0.00"
             style={{ flex: 1, fontSize: 28, fontWeight: 600, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none', borderBottom: '2px solid var(--blue)', paddingBottom: 2 }} />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none', marginBottom: 8 }}>
-          {FIXED_FREQS.map(({ id, label }) => { const on = fFreq === id; return (
-            <button key={id} onClick={() => setFFreq(id)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? 'var(--blue)' : 'transparent', color: on ? '#fff' : 'var(--text3)', border: on ? '1.5px solid var(--blue)' : '1px solid var(--border2)', fontWeight: on ? 500 : 400 }}>
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 8 }}>Frecuencia</label>
+        <div className="flex gap-2" style={{ marginBottom: 14 }}>
+          {FIXED_FREQS.map(({ id, label }) => (
+            <button key={id} onClick={() => setFFreq(id)}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', background: fFreq === id ? 'var(--blue)' : 'var(--bg2)', color: fFreq === id ? '#fff' : 'var(--text2)', border: 'none' }}>
               {label}
             </button>
-          )})}
+          ))}
         </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none', marginBottom: 10 }}>
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 8 }}>Categoría</label>
+        <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none', marginBottom: 14 }}>
           {CATS.map(([id, label]) => { const on = fCat === id; return (
-            <button key={id} onClick={() => setFCat(id)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? CAT_COLORS[id] : 'transparent', color: on ? '#fff' : 'var(--text3)', border: on ? `1.5px solid ${CAT_COLORS[id]}` : '1px solid var(--border2)', fontWeight: on ? 500 : 400 }}>
+            <button key={id} onClick={() => setFCat(id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? CAT_COLORS[id] : 'transparent', color: on ? '#fff' : 'var(--text3)', border: on ? `1.5px solid ${CAT_COLORS[id]}` : '1px solid var(--border2)', fontWeight: on ? 500 : 400 }}>
               <span>{ICONS[id]}</span>{label}
             </button>
           )})}
         </div>
-        <div className="flex gap-2" style={{ marginBottom: 10 }}>
-          <input type="text" value={fName} onChange={e => setFName(e.target.value)} placeholder="Nombre (ej: Renta, Netflix…)" style={{ flex: 1, fontSize: 13, color: 'var(--text2)', border: 'none', background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', outline: 'none' }} />
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
-              📅 {format(parseISO(fDate), 'd MMM', { locale: es })}
-            </div>
-            <input type="date" value={fDate} onChange={e => setFDate(e.target.value || today)}
-              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Nombre</label>
+        <input value={fName} onChange={e => setFName(e.target.value)} placeholder="Ej: Alquiler, Netflix, Gym…"
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '0.5px solid var(--border2)', background: 'var(--bg2)', color: 'var(--text1)', fontSize: 14, marginBottom: 14, outline: 'none' }} />
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Fecha de inicio</label>
+        <div style={{ position: 'relative', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 8, padding: '10px 12px', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+            📅 {fmtDay(fDate)}
           </div>
+          <input type="date" value={fDate} onChange={e => setFDate(e.target.value || today)}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
         </div>
-        {fSaveError && (
-          <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>
-            ⚠️ {fSaveError}
-          </div>
-        )}
-        <button onClick={saveFixed} disabled={fSaving || !fAmount} style={{ width: '100%', padding: '12px 0', borderRadius: 'var(--radius-sm)', background: 'var(--blue)', color: '#fff', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer', opacity: (!fAmount || fSaving) ? .5 : 1 }}>
-          {fSaving ? 'Guardando…' : 'Agregar gasto fijo'}
+        {error && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>⚠️ {error}</div>}
+        <button onClick={save} disabled={saving || !fAmount}
+          style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--blue)', color: '#fff', fontSize: 14, fontWeight: 500, border: 'none', cursor: 'pointer', opacity: (!fAmount || saving) ? .5 : 1 }}>
+          {saving ? 'Guardando…' : 'Crear sobre de gasto'}
         </button>
       </div>
-      <div className="scroll-area" style={{ padding: '0 16px 16px' }}>
-        {activeFixed.length === 0 && <EmptyState message="Sin gastos fijos registrados" />}
-        {activeFixed.length > 0 && <div style={{ marginTop: 12 }}>
-          <div className="flex justify-between pb-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>ACTIVOS</span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>{activeFixed.length} gastos</span>
-          </div>
-          {activeFixed.map((e: RecurringExpense) => {
-            const { name: eName, date: eDate } = decFixed(e.name)
-            const startDate = eDate || e.created_at.split('T')[0]
-            return (
-              <div key={e.id} className="flex items-center gap-2.5 py-2.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
-                <div style={{ fontSize: 18, width: 34, height: 34, borderRadius: 9, background: CAT_COLORS[e.category] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{ICONS[e.category]}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{FREQ_LABELS[e.frequency]} · {formatAUD(weeklyExpenseEquivalent(e))}/sem · desde {fmtDay(startDate)}</div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--red)' }}>{formatAUD(e.amount)}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>{FREQ_LABELS[e.frequency].toLowerCase()}</div>
-                </div>
-                <button onClick={() => deleteRecurringExpense(e.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
-              </div>
-            )
-          })}
-        </div>}
-      </div>
-    </>}
-    <BottomNav />
-  </>)
+    </div>
+  )
 }

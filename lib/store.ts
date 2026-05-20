@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { format } from 'date-fns'
 import { getClient } from './supabase'
-import type { IncomeSource, IncomeEntry, Expense, DebtPocket, SavingsGoal, RecurringExpense } from './types'
+import type { IncomeSource, IncomeEntry, Expense, DebtPocket, SavingsGoal, RecurringExpense, FixedExpenseAllocation } from './types'
 import { weeklyEquivalent, weeklyExpenseEquivalent } from './types'
 
 // Categorías que el CHECK constraint de la DB acepta actualmente.
@@ -13,7 +13,7 @@ const DB_VALID_CATEGORIES = new Set([
 
 interface State {
   incomeSources:IncomeSource[]; incomeEntries:IncomeEntry[]; expenses:Expense[]
-  recurringExpenses:RecurringExpense[]
+  recurringExpenses:RecurringExpense[]; fixedExpenseAllocations:FixedExpenseAllocation[]
   debtPockets:DebtPocket[]; savingsGoals:SavingsGoal[]; loading:boolean; exchangeRates:Record<string,number>
   fetchAll:()=>Promise<void>; fetchExchangeRates:()=>Promise<void>
   addIncomeSource:(d:Omit<IncomeSource,'id'|'user_id'|'created_at'>)=>Promise<void>
@@ -31,6 +31,8 @@ interface State {
   addSavingsGoal:(d:Omit<SavingsGoal,'id'|'user_id'>)=>Promise<void>
   deleteSavingsGoal:(id:string)=>Promise<void>
   addToSavings:(id:string,amount:number,date?:string)=>Promise<void>
+  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string)=>Promise<void>
+  deleteFixedAllocation:(id:string)=>Promise<void>
   weeklyIncome:()=>number; weeklyFixedCosts:()=>number; todayExpenses:()=>Expense[]; weekExpenses:()=>Expense[]
 }
 
@@ -50,21 +52,22 @@ async function getUser() {
 }
 
 export const usePocketFlow = create<State>((set,get) => ({
-  incomeSources:[], incomeEntries:[], expenses:[], recurringExpenses:[], debtPockets:[], savingsGoals:[], loading:false, exchangeRates:{},
+  incomeSources:[], incomeEntries:[], expenses:[], recurringExpenses:[], fixedExpenseAllocations:[], debtPockets:[], savingsGoals:[], loading:false, exchangeRates:{},
 
   fetchAll: async () => {
     set({loading:true}); const db=getClient()
-    const [s,e,ex,r,d,g] = await Promise.all([
+    const [s,e,ex,r,d,g,fa] = await Promise.all([
       db.from('income_sources').select('*').order('created_at'),
       db.from('income_entries').select('*').order('received_at',{ascending:false}).limit(500),
       db.from('expenses').select('*').order('expense_date',{ascending:false}).limit(500),
       db.from('recurring_expenses').select('*').order('created_at'),
       db.from('debt_pockets').select('*').order('created_at'),
       db.from('savings_goals').select('*').order('created_at'),
+      db.from('fixed_expense_allocations').select('*').order('allocated_at',{ascending:false}).limit(500),
     ])
     set({
       incomeSources:s.data||[], incomeEntries:e.data||[], expenses:ex.data||[],
-      recurringExpenses:r.data||[], debtPockets:d.data||[], savingsGoals:g.data||[],
+      recurringExpenses:r.data||[], fixedExpenseAllocations:fa.data||[], debtPockets:d.data||[], savingsGoals:g.data||[],
       loading:false,
     })
   },
@@ -130,10 +133,11 @@ export const usePocketFlow = create<State>((set,get) => ({
     await db.from('income_sources').delete().eq('user_id', user.id)
     await Promise.all([
       db.from('expenses').delete().eq('user_id', user.id),
+      db.from('fixed_expense_allocations').delete().eq('user_id', user.id),
       db.from('recurring_expenses').delete().eq('user_id', user.id),
       db.from('savings_goals').delete().eq('user_id', user.id),
     ])
-    set({expenses:[],incomeEntries:[],incomeSources:[],recurringExpenses:[],savingsGoals:[]})
+    set({expenses:[],incomeEntries:[],incomeSources:[],recurringExpenses:[],savingsGoals:[],fixedExpenseAllocations:[]})
   },
 
   deleteIncomeEntry: async (id) => {
@@ -172,7 +176,7 @@ export const usePocketFlow = create<State>((set,get) => ({
   deleteRecurringExpense: async (id) => {
     const { error } = await getClient().from('recurring_expenses').delete().eq('id',id)
     if (error) throw new Error(error.message)
-    set(s=>({recurringExpenses:s.recurringExpenses.filter(e=>e.id!==id)}))
+    set(s=>({recurringExpenses:s.recurringExpenses.filter(e=>e.id!==id), fixedExpenseAllocations:s.fixedExpenseAllocations.filter(a=>a.recurring_expense_id!==id)}))
   },
 
   addSavingsGoal: async (data) => {
@@ -207,6 +211,22 @@ export const usePocketFlow = create<State>((set,get) => ({
       savingsGoals: s.savingsGoals.map(g => g.id === id ? {...g, current_amount: newAmt} : g),
       expenses: expRow ? [expRow, ...s.expenses] : s.expenses,
     }))
+  },
+
+  addFixedAllocation: async (recurringExpenseId, amount, date?) => {
+    const user = await getUser(); const db = getClient()
+    const allocated_at = date || format(new Date(), 'yyyy-MM-dd')
+    const { data:row, error } = await db.from('fixed_expense_allocations')
+      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at})
+      .select().single()
+    if (error) throw new Error(error.message)
+    if (row) set(s=>({fixedExpenseAllocations:[row,...s.fixedExpenseAllocations]}))
+  },
+
+  deleteFixedAllocation: async (id) => {
+    const {error} = await getClient().from('fixed_expense_allocations').delete().eq('id',id)
+    if (error) throw new Error(error.message)
+    set(s=>({fixedExpenseAllocations:s.fixedExpenseAllocations.filter(a=>a.id!==id)}))
   },
 
   weeklyIncome: ()=>get().incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0),
