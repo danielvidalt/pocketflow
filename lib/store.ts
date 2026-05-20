@@ -21,6 +21,8 @@ interface State {
   registerPayment:(sourceId:string|null,amount:number,date?:string,note?:string)=>Promise<void>
   addExpense:(d:Omit<Expense,'id'|'user_id'|'created_at'>)=>Promise<void>
   deleteExpense:(id:string)=>Promise<void>
+  deleteExpensesByDate:(date:string)=>Promise<void>
+  deleteAllData:()=>Promise<void>
   addRecurringExpense:(d:Omit<RecurringExpense,'id'|'user_id'|'created_at'>)=>Promise<void>
   deleteRecurringExpense:(id:string)=>Promise<void>
   addSavingsGoal:(d:Omit<SavingsGoal,'id'|'user_id'>)=>Promise<void>
@@ -110,6 +112,25 @@ export const usePocketFlow = create<State>((set,get) => ({
     const { error } = await getClient().from('expenses').delete().eq('id',id)
     if (error) throw new Error(error.message)
     set(s=>({expenses:s.expenses.filter(e=>e.id!==id)}))
+  },
+
+  deleteExpensesByDate: async (date) => {
+    const { error } = await getClient().from('expenses').delete().eq('expense_date', date)
+    if (error) throw new Error(error.message)
+    set(s=>({expenses:s.expenses.filter(e=>e.expense_date!==date)}))
+  },
+
+  deleteAllData: async () => {
+    const user = await getUser(); const db = getClient()
+    // income_entries references income_sources — delete entries first
+    await db.from('income_entries').delete().eq('user_id', user.id)
+    await db.from('income_sources').delete().eq('user_id', user.id)
+    await Promise.all([
+      db.from('expenses').delete().eq('user_id', user.id),
+      db.from('recurring_expenses').delete().eq('user_id', user.id),
+      db.from('savings_goals').delete().eq('user_id', user.id),
+    ])
+    set({expenses:[],incomeEntries:[],incomeSources:[],recurringExpenses:[],savingsGoals:[]})
   },
 
   addRecurringExpense: async (data) => {

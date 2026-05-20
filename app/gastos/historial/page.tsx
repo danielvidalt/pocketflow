@@ -1,11 +1,12 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory } from '@/lib/types'
 import { SectionHeader, EmptyState } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { format, parseISO, subDays } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { Trash2 } from 'lucide-react'
 
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
 function fmtDay(dateStr: string) {
@@ -18,7 +19,8 @@ const ICONS: Record<ExpenseCategory, string> = {
 }
 
 export default function HistorialPage() {
-  const { expenses, deleteExpense } = usePocketFlow()
+  const { expenses, deleteExpense, deleteExpensesByDate } = usePocketFlow()
+  const [confirmDate, setConfirmDate] = useState<string | null>(null)
 
   const todayStr = localToday()
   const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
@@ -39,17 +41,38 @@ export default function HistorialPage() {
       }))
   }, [expenses, todayStr, yesterdayStr])
 
+  async function handleDeleteDay(date: string) {
+    await deleteExpensesByDate(date)
+    setConfirmDate(null)
+  }
+
   return (<>
     <SectionHeader title="Todos los gastos" subtitle={`${expenses.length} registros · ${formatAUD(total)} total`} />
     <div className="scroll-area" style={{ padding: '0 16px 16px' }}>
       {groups.length === 0 && <EmptyState message="Sin gastos registrados" />}
-      {groups.map(({ label, items }) => {
+      {groups.map(({ date, label, items }) => {
         const dayTotal = items.reduce((s, e) => s + e.amount, 0)
+        const isConfirming = confirmDate === date
         return (
-          <div key={label} style={{ marginTop: 12 }}>
-            <div className="flex justify-between pb-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</span>
+          <div key={date} style={{ marginTop: 12 }}>
+            <div className="flex items-center gap-2 pb-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', flex: 1 }}>{label}</span>
               <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(dayTotal)}</span>
+              {isConfirming ? (<>
+                <button onClick={() => handleDeleteDay(date)}
+                  style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: 'var(--red)', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                  Borrar {items.length}
+                </button>
+                <button onClick={() => setConfirmDate(null)}
+                  style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px' }}>
+                  No
+                </button>
+              </>) : (
+                <button onClick={() => setConfirmDate(date)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '2px 4px' }}>
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
             {items.map(e => (
               <div key={e.id} className="flex items-center gap-2.5 py-2.5" style={{ borderBottom: '0.5px solid var(--border)' }}>

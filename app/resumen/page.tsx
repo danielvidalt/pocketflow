@@ -10,8 +10,10 @@ import { startOfWeek,endOfWeek,startOfMonth,endOfMonth,isWithinInterval,parseISO
 import { RefreshCw } from 'lucide-react'
 
 export default function ResumenPage(){
-  const {incomeSources,incomeEntries,expenses,debtPockets,savingsGoals,exchangeRates}=usePocketFlow()
+  const {incomeSources,incomeEntries,expenses,debtPockets,savingsGoals,exchangeRates,deleteAllData}=usePocketFlow()
   const [period,setPeriod]=useState<'week'|'month'>('week')
+  const [showDeleteAll,setShowDeleteAll]=useState(false)
+  const [deletingAll,setDeletingAll]=useState(false)
   const now=new Date()
   const range=period==='week'?{start:startOfWeek(now,{weekStartsOn:1}),end:endOfWeek(now,{weekStartsOn:1})}:{start:startOfMonth(now),end:endOfMonth(now)}
   const entries=useMemo(()=>incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),range)),[incomeEntries,period])
@@ -106,7 +108,37 @@ export default function ResumenPage(){
           </div>)
         })}
       </div>}
+      {/* Zona de peligro */}
+      <div style={{marginTop:8,marginBottom:10,padding:'14px 16px',background:'var(--red-bg)',borderRadius:'var(--radius)',border:'0.5px solid var(--red)'}}>
+        <div style={{fontSize:11,fontWeight:600,color:'var(--red)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Zona de peligro</div>
+        <button onClick={()=>setShowDeleteAll(true)}
+          style={{width:'100%',padding:11,borderRadius:'var(--radius-sm)',background:'var(--red)',color:'#fff',border:'none',fontSize:13,fontWeight:500,cursor:'pointer'}}>
+          Borrar todos los datos
+        </button>
+      </div>
     </div>
+
+    {showDeleteAll&&(
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'flex-end',zIndex:200}}>
+        <div className="slide-up" style={{width:'100%',maxWidth:430,margin:'0 auto',background:'var(--bg)',borderRadius:'20px 20px 0 0',padding:24}}>
+          <div style={{fontSize:28,textAlign:'center',marginBottom:10}}>⚠️</div>
+          <div style={{fontSize:16,fontWeight:600,color:'var(--text1)',textAlign:'center',marginBottom:8}}>¿Borrar todos los datos?</div>
+          <div style={{fontSize:13,color:'var(--text2)',textAlign:'center',lineHeight:1.6,marginBottom:22}}>
+            Se eliminarán gastos, ingresos, fuentes de ingreso, gastos fijos y ahorros.<br/>Esta acción no se puede deshacer.
+          </div>
+          <button
+            onClick={async()=>{setDeletingAll(true);try{await deleteAllData()}finally{setDeletingAll(false);setShowDeleteAll(false)}}}
+            disabled={deletingAll}
+            style={{width:'100%',padding:13,borderRadius:10,background:'var(--red)',color:'#fff',border:'none',fontSize:14,fontWeight:600,cursor:'pointer',marginBottom:10,opacity:deletingAll?.6:1}}>
+            {deletingAll?'Borrando…':'Confirmar, borrar todo'}
+          </button>
+          <button onClick={()=>setShowDeleteAll(false)}
+            style={{width:'100%',padding:13,borderRadius:10,background:'var(--bg2)',color:'var(--text2)',border:'none',fontSize:14,cursor:'pointer'}}>
+            Cancelar
+          </button>
+        </div>
+      </div>
+    )}
     <BottomNav/>
   </>)
 }
