@@ -114,11 +114,13 @@ export default function GastosPage() {
   const weekRemaining = weekCollected - weekSpent
 
   // Historial completo de gastos (todos, no solo 7 días), agrupado por fecha local
+  // Los registros de ahorro (Ahorro: X) se excluyen del historial diario — aparecen en su propia pestaña
   const expGroups = useMemo(() => {
     const todayStr = localToday()
     const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
     const map = new Map<string, typeof expenses>()
     for (const e of expenses) {
+      if (e.name.startsWith('Ahorro: ')) continue
       if (!map.has(e.expense_date)) map.set(e.expense_date, [])
       map.get(e.expense_date)!.push(e)
     }

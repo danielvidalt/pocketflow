@@ -23,14 +23,17 @@ export default function ResumenPage(){
   const entries=useMemo(()=>incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),range)),[incomeEntries,period])
   const exps=useMemo(()=>expenses.filter(e=>isWithinInterval(parseISO(e.expense_date),range)),[expenses,period])
   const cobrado=entries.reduce((s,e)=>s+e.amount,0)
-  const gastado=exps.reduce((s,e)=>s+e.amount,0)
+  // Separar gastos reales de transferencias a ahorros (no duplicar con la sección de sobres)
+  const gastadoRegular=exps.filter(e=>!e.name.startsWith('Ahorro: ')).reduce((s,e)=>s+e.amount,0)
+  const gastadoAhorros=exps.filter(e=>e.name.startsWith('Ahorro: ')).reduce((s,e)=>s+e.amount,0)
+  const gastado=gastadoRegular+gastadoAhorros  // total para Disponible Real
   const totalAhorros=savingsGoals.reduce((s,g)=>s+g.current_amount,0)
   const weekly=incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0)
   const multiplier=period==='week'?1:period==='fortnight'?2:4.33
   const expected=weekly*multiplier
   const fixedCosts=weeklyFixedCosts()*multiplier
   const periodLabel=period==='week'?'esta semana':period==='fortnight'?'esta quincena':'este mes'
-  const catDist=useMemo(()=>{const m:Partial<Record<ExpenseCategory,number>>={};exps.forEach(e=>{m[e.category]=(m[e.category]||0)+e.amount});return Object.entries(m).sort(([,a],[,b])=>b-a).map(([c,a])=>({cat:c as ExpenseCategory,amt:a as number}))},[exps])
+  const catDist=useMemo(()=>{const m:Partial<Record<ExpenseCategory,number>>={};exps.filter(e=>!e.name.startsWith('Ahorro: ')).forEach(e=>{m[e.category]=(m[e.category]||0)+e.amount});return Object.entries(m).sort(([,a],[,b])=>b-a).map(([c,a])=>({cat:c as ExpenseCategory,amt:a as number}))},[exps])
   const mx=catDist[0]?.amt||1
 
   return(<>
@@ -48,7 +51,7 @@ export default function ResumenPage(){
         <Link href="/gastos/historial" style={{display:'block',textDecoration:'none'}}>
           <div style={{background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'10px 12px',height:'100%',cursor:'pointer'}}>
             <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Gastos</div>
-            <div style={{fontSize:20,fontWeight:600,color:'var(--red)'}}>{formatAUD(gastado)}</div>
+            <div style={{fontSize:20,fontWeight:600,color:'var(--red)'}}>{formatAUD(gastadoRegular)}</div>
             <div style={{fontSize:10,color:'var(--blue)',marginTop:2}}>ver todos →</div>
           </div>
         </Link>
@@ -65,7 +68,11 @@ export default function ResumenPage(){
         <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Disponible real</div>
         <div style={{fontSize:26,fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0,cobrado-gastado-fixedCosts))}</div>
         <ProgressBar percent={expected>0?(cobrado/expected)*100:0} color="var(--green)" height={6}/>
-        <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{Math.round(expected>0?(cobrado/expected)*100:0)}% de {formatAUD(expected)} esperado{fixedCosts>0?` · ${formatAUD(fixedCosts)} fijo`:''}</div>
+        <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>
+          {formatAUD(gastadoRegular)} gastos
+          {gastadoAhorros>0?` · ${formatAUD(gastadoAhorros)} ahorros`:''}
+          {fixedCosts>0?` · ${formatAUD(fixedCosts)} fijos`:''}
+        </div>
       </div>
 
       {catDist.length>0&&<div className="card" style={{marginBottom:10}}>
