@@ -21,7 +21,7 @@ function decFixed(raw: string): { name: string; date: string } {
 }
 
 const CATS=Object.entries(CAT_LABELS) as [ExpenseCategory,string][]
-const ICONS: Record<ExpenseCategory,string>={food:'🍽️',transport:'🚌',leisure:'🎬',shopping:'🛍️',health:'💊',housing:'🏠',subscriptions:'📱',other:'···'}
+const ICONS: Record<ExpenseCategory,string>={food:'🍽️',supermarket:'🛒',transport:'🚌',leisure:'🎬',shopping:'🛍️',health:'💊',housing:'🏠',subscriptions:'📱',other:'···'}
 const FIXED_FREQS: Array<{id:'weekly'|'fortnightly'|'monthly',label:string}> = [
   {id:'weekly',label:'Semanal'},
   {id:'fortnightly',label:'Quincenal'},
