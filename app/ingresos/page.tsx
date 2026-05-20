@@ -105,7 +105,7 @@ export default function IngresosPage() {
                     <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', userSelect: 'none' }}>
                       📅 {fmtDay(payDate)}
                     </div>
-                    <input type="date" value={payDate} max={today}
+                    <input type="date" value={payDate}
                       onChange={e => setPayDate(e.target.value || today)}
                       style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
                   </div>
@@ -232,7 +232,7 @@ function Modal({ onClose, onSave, onRegister }: {
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', userSelect: 'none' }}>
               📅 {fmtDay(incomeDate)}
             </div>
-            <input type="date" value={incomeDate} max={today} onChange={e => setIncomeDate(e.target.value || today)}
+            <input type="date" value={incomeDate} onChange={e => setIncomeDate(e.target.value || today)}
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </div>
         </>}

@@ -111,7 +111,7 @@ export default function AhorrosPage() {
                   <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:8,padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
                     📅 {fmtDay(addDate)}
                   </div>
-                  <input type="date" value={addDate} max={today} onChange={e => setAddDate(e.target.value||today)}
+                  <input type="date" value={addDate} onChange={e => setAddDate(e.target.value||today)}
                     style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
                 </div>
                 <div className="flex gap-2">

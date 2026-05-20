@@ -181,7 +181,7 @@ export default function GastosPage() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
               📅 {format(parseISO(expDate), 'd MMM', { locale: es })}
             </div>
-            <input type="date" value={expDate} max={today} onChange={e => setExpDate(e.target.value || today)}
+            <input type="date" value={expDate} onChange={e => setExpDate(e.target.value || today)}
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </div>
         </div>
@@ -279,7 +279,7 @@ export default function GastosPage() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
               📅 {format(parseISO(fDate), 'd MMM', { locale: es })}
             </div>
-            <input type="date" value={fDate} max={today} onChange={e => setFDate(e.target.value || today)}
+            <input type="date" value={fDate} onChange={e => setFDate(e.target.value || today)}
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </div>
         </div>
