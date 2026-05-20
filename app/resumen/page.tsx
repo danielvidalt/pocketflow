@@ -10,7 +10,7 @@ import { startOfWeek,endOfWeek,startOfMonth,endOfMonth,isWithinInterval,parseISO
 import { RefreshCw } from 'lucide-react'
 
 export default function ResumenPage(){
-  const {incomeSources,incomeEntries,expenses,debtPockets,savingsGoals,exchangeRates,deleteAllData}=usePocketFlow()
+  const {incomeSources,incomeEntries,expenses,debtPockets,savingsGoals,exchangeRates,deleteAllData,weeklyFixedCosts}=usePocketFlow()
   const [period,setPeriod]=useState<'week'|'fortnight'|'month'>('week')
   const [showDeleteAll,setShowDeleteAll]=useState(false)
   const [deletingAll,setDeletingAll]=useState(false)
@@ -26,7 +26,9 @@ export default function ResumenPage(){
   const gastado=exps.reduce((s,e)=>s+e.amount,0)
   const totalAhorros=savingsGoals.reduce((s,g)=>s+g.current_amount,0)
   const weekly=incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0)
-  const expected=period==='week'?weekly:period==='fortnight'?weekly*2:weekly*4.33
+  const multiplier=period==='week'?1:period==='fortnight'?2:4.33
+  const expected=weekly*multiplier
+  const fixedCosts=weeklyFixedCosts()*multiplier
   const periodLabel=period==='week'?'esta semana':period==='fortnight'?'esta quincena':'este mes'
   const catDist=useMemo(()=>{const m:Partial<Record<ExpenseCategory,number>>={};exps.forEach(e=>{m[e.category]=(m[e.category]||0)+e.amount});return Object.entries(m).sort(([,a],[,b])=>b-a).map(([c,a])=>({cat:c as ExpenseCategory,amt:a as number}))},[exps])
   const mx=catDist[0]?.amt||1
@@ -61,9 +63,9 @@ export default function ResumenPage(){
 
       <div style={{background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'10px 12px',marginBottom:12}}>
         <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Disponible real</div>
-        <div style={{fontSize:26,fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0,cobrado-gastado))}</div>
+        <div style={{fontSize:26,fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0,cobrado-gastado-fixedCosts))}</div>
         <ProgressBar percent={expected>0?(cobrado/expected)*100:0} color="var(--green)" height={6}/>
-        <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{Math.round(expected>0?(cobrado/expected)*100:0)}% de {formatAUD(expected)} esperado</div>
+        <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{Math.round(expected>0?(cobrado/expected)*100:0)}% de {formatAUD(expected)} esperado{fixedCosts>0?` · ${formatAUD(fixedCosts)} fijo`:''}</div>
       </div>
 
       {catDist.length>0&&<div className="card" style={{marginBottom:10}}>
