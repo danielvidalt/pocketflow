@@ -36,6 +36,7 @@ export default function HomePage(){
   const [period,setPeriod]=useState<Period>('week')
   const [settings,setSettings]=useState<AppSettings>(DEFAULTS)
   const [showSettings,setShowSettings]=useState(false)
+  const [pending,setPending]=useState<AppSettings>(DEFAULTS)
 
   useEffect(()=>{ setSettings(getSettings()) },[])
 
@@ -53,10 +54,16 @@ export default function HomePage(){
     router.push('/login')
   }
 
-  function updateSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]){
-    const next={...settings,[key]:value}
-    setSettings(next); saveSettings(next)
-    if(key==='showMonth'&&!value&&period==='month') setPeriod('week')
+  function openSettings(){ setPending(settings); setShowSettings(true) }
+
+  function updatePending<K extends keyof AppSettings>(key: K, value: AppSettings[K]){
+    setPending(p=>({...p,[key]:value}))
+  }
+
+  function applySettings(){
+    setSettings(pending); saveSettings(pending)
+    if(!pending.showMonth&&period==='month') setPeriod('week')
+    setShowSettings(false)
   }
 
   const now=new Date()
@@ -80,12 +87,12 @@ export default function HomePage(){
   const expectedIncome=weeklyTotal*multiplier
 
   // "Pagos esta semana" always shows the current week regardless of period toggle
-  const weekEntries=useMemo(()=>incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),{start:wkStart,end:wkEnd})),[incomeEntries])
+  const weekEntries=useMemo(()=>incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),{start:wkStart,end:wkEnd})),[incomeEntries,settings.payDayStart])
 
   const periodEntries=useMemo(()=>{
     const {start,end}=getPeriodRange()
     return incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),{start,end}))
-  },[incomeEntries,period,settings.fortnightDir])
+  },[incomeEntries,period,settings.fortnightDir,settings.payDayStart])
 
   const collectedThisPeriod=periodEntries.reduce((s,e)=>s+e.amount,0)
   const collectedPct=expectedIncome>0?(collectedThisPeriod/expectedIncome)*100:0
@@ -93,7 +100,7 @@ export default function HomePage(){
   const periodExps=useMemo(()=>{
     const {start,end}=getPeriodRange()
     return expenses.filter(e=>isWithinInterval(parseISO(e.expense_date),{start,end}))
-  },[expenses,period,settings.fortnightDir])
+  },[expenses,period,settings.fortnightDir,settings.payDayStart])
 
   const periodSpent=periodExps.reduce((s,e)=>s+e.amount,0)
   const fixedCosts=weeklyFixedCosts()*multiplier
@@ -124,7 +131,7 @@ export default function HomePage(){
       action={
         <div className="flex gap-2">
           <Link href="/calendario" style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><Calendar size={18} color="var(--text2)" strokeWidth={1.7}/></Link>
-          <button onClick={()=>setShowSettings(true)} style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><Settings size={18} color="var(--text2)" strokeWidth={1.7}/></button>
+          <button onClick={openSettings} style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><Settings size={18} color="var(--text2)" strokeWidth={1.7}/></button>
           <button onClick={handleLogout} style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><LogOut size={18} color="var(--text2)" strokeWidth={1.7}/></button>
         </div>
       }/>
@@ -180,7 +187,12 @@ export default function HomePage(){
     </div>
 
     {/* Panel de ajustes */}
-    {showSettings&&(
+    {showSettings&&(()=>{
+      const pw=getPayWeekStart(now,pending.payDayStart)
+      const pwe=new Date(pw); pwe.setDate(pw.getDate()+6); pwe.setHours(23,59,59,999)
+      const pfp=new Date(pw); pfp.setDate(pw.getDate()-7)
+      const pfne=new Date(pw); pfne.setDate(pw.getDate()+13); pfne.setHours(23,59,59,999)
+      return(
       <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'flex-end',zIndex:200}}
         onClick={()=>setShowSettings(false)}>
         <div className="slide-up" style={{width:'100%',maxWidth:430,margin:'0 auto',background:'var(--bg)',borderRadius:'20px 20px 0 0',padding:20}}
@@ -190,58 +202,62 @@ export default function HomePage(){
             <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',cursor:'pointer'}}><X size={20} color="var(--text3)"/></button>
           </div>
 
-          <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Vista quincenal</div>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Inicio de semana</div>
+          <div style={{display:'flex',gap:4,marginBottom:6}}>
+            {PAY_DAYS.map(([day,lbl])=>{
+              const on=pending.payDayStart===day
+              return(
+                <button key={day} onClick={()=>updatePending('payDayStart',day)}
+                  style={{flex:1,padding:'7px 0',borderRadius:6,fontSize:11,fontWeight:500,border:'none',cursor:'pointer',
+                    background:on?'var(--blue)':'var(--bg2)',color:on?'#fff':'var(--text2)'}}>
+                  {lbl}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:20,paddingLeft:4}}>
+            {`Tu semana va del ${PAY_DAY_FULL[pending.payDayStart].toLowerCase()} al ${PAY_DAY_FULL[(pending.payDayStart+6)%7].toLowerCase()}`}
+          </div>
+
+          <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8,paddingTop:16,borderTop:'0.5px solid var(--border)'}}>Vista quincenal</div>
           <div style={{display:'flex',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:3,marginBottom:6}}>
             {([['next','Esta sem + próxima'],['prev','Sem anterior + esta']] as const).map(([dir,lbl])=>(
-              <button key={dir} onClick={()=>updateSetting('fortnightDir',dir)}
+              <button key={dir} onClick={()=>updatePending('fortnightDir',dir)}
                 style={{flex:1,padding:8,borderRadius:6,fontSize:12,fontWeight:500,border:'none',cursor:'pointer',
-                  background:settings.fortnightDir===dir?'var(--bg)':'transparent',
-                  color:settings.fortnightDir===dir?'var(--text1)':'var(--text2)',
-                  boxShadow:settings.fortnightDir===dir?'0 1px 3px rgba(0,0,0,.1)':'none'}}>
+                  background:pending.fortnightDir===dir?'var(--bg)':'transparent',
+                  color:pending.fortnightDir===dir?'var(--text1)':'var(--text2)',
+                  boxShadow:pending.fortnightDir===dir?'0 1px 3px rgba(0,0,0,.1)':'none'}}>
                 {lbl}
               </button>
             ))}
           </div>
           <div style={{fontSize:11,color:'var(--text3)',marginBottom:20,paddingLeft:4}}>
-            {settings.fortnightDir==='next'
-              ?`Del ${format(wkStart,"d MMM",{locale:es})} al ${format(fnNextEnd,"d MMM",{locale:es})}`
-              :`Del ${format(fnPrevStart,"d MMM",{locale:es})} al ${format(wkEnd,"d MMM",{locale:es})}`}
+            {pending.fortnightDir==='next'
+              ?`Del ${format(pw,"d MMM",{locale:es})} al ${format(pfne,"d MMM",{locale:es})}`
+              :`Del ${format(pfp,"d MMM",{locale:es})} al ${format(pwe,"d MMM",{locale:es})}`}
           </div>
 
-          <div style={{paddingTop:16,borderTop:'0.5px solid var(--border)',marginBottom:20}}>
-            <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Inicio de semana</div>
-            <div style={{display:'flex',gap:4}}>
-              {PAY_DAYS.map(([day,lbl])=>{
-                const on=settings.payDayStart===day
-                return(
-                  <button key={day} onClick={()=>updateSetting('payDayStart',day)}
-                    style={{flex:1,padding:'7px 0',borderRadius:6,fontSize:11,fontWeight:500,border:'none',cursor:'pointer',
-                      background:on?'var(--blue)':'var(--bg2)',color:on?'#fff':'var(--text2)'}}>
-                    {lbl}
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{fontSize:11,color:'var(--text3)',marginTop:6,paddingLeft:4}}>
-              {`Tu semana va del ${PAY_DAY_FULL[settings.payDayStart].toLowerCase()} al ${PAY_DAY_FULL[(settings.payDayStart+6)%7].toLowerCase()}`}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between" style={{paddingTop:16,borderTop:'0.5px solid var(--border)'}}>
+          <div className="flex items-center justify-between" style={{paddingTop:16,borderTop:'0.5px solid var(--border)',marginBottom:24}}>
             <div>
               <div style={{fontSize:13,fontWeight:500,color:'var(--text1)'}}>Vista mensual</div>
               <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>Agrega &quot;Este mes&quot; en el selector del inicio</div>
             </div>
-            <button onClick={()=>updateSetting('showMonth',!settings.showMonth)}
+            <button onClick={()=>updatePending('showMonth',!pending.showMonth)}
               style={{width:44,height:26,borderRadius:13,border:'none',cursor:'pointer',flexShrink:0,
-                background:settings.showMonth?'var(--green)':'var(--bg3)',position:'relative',transition:'background .2s'}}>
-              <span style={{position:'absolute',top:2,left:settings.showMonth?20:2,width:22,height:22,
+                background:pending.showMonth?'var(--green)':'var(--bg3)',position:'relative',transition:'background .2s'}}>
+              <span style={{position:'absolute',top:2,left:pending.showMonth?20:2,width:22,height:22,
                 borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
             </button>
           </div>
+
+          <button onClick={applySettings}
+            style={{width:'100%',padding:'13px 0',borderRadius:'var(--radius-sm)',background:'var(--blue)',color:'#fff',fontSize:14,fontWeight:600,border:'none',cursor:'pointer'}}>
+            Guardar cambios
+          </button>
         </div>
       </div>
-    )}
+      )
+    })()}
     <BottomNav/>
   </>)
 }
