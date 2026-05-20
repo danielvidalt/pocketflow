@@ -14,7 +14,7 @@ const COLORS = ['#534AB7','#1D9E75','#BA7517','#D85A30','#185FA5','#993556','#3B
 function encEnv(name: string, type: '%'|'$', value: number) {
   return `${name}${D}${type}${value}`
 }
-export function decEnv(raw: string): { name: string; type: '%'|'$'; value: number } {
+function decEnv(raw: string): { name: string; type: '%'|'$'; value: number } {
   const i = raw.indexOf(D)
   if (i === -1) return { name: raw, type: '$', value: 0 }
   const rule = raw.slice(i + 1)
