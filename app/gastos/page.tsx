@@ -425,7 +425,7 @@ export default function GastosPage() {
       {editingFixed && (
         <NewFixedModal
           onClose={() => setEditingFixed(null)}
-          onSave={async (d) => { await updateRecurringExpense(editingFixed.id, d); setEditingFixed(null) }}
+          onSave={async (d) => { await updateRecurringExpense(editingFixed.id, d) }}
           initial={editingFixed}
         />
       )}

@@ -200,7 +200,7 @@ export default function AhorrosPage() {
     {showNew && (
       <EnvModal
         onClose={() => setShowNew(false)}
-        onSave={async (d) => { await addSavingsGoal(d); setShowNew(false) }}
+        onSave={async (d) => { await addSavingsGoal(d) }}
         weeklyIncome={wIncome}
       />
     )}
@@ -208,7 +208,7 @@ export default function AhorrosPage() {
       <EnvModal
         initial={editingGoal}
         onClose={() => setEditingGoal(null)}
-        onSave={async (d) => { await updateSavingsGoal(editingGoal.id, d); setEditingGoal(null) }}
+        onSave={async (d) => { await updateSavingsGoal(editingGoal.id, d) }}
         weeklyIncome={wIncome}
       />
     )}
@@ -242,19 +242,26 @@ function EnvModal({ onClose, onSave, weeklyIncome, initial }: {
   const val = parseFloat(allocValue) || 0
   const weeklyPreview = allocType === '%' ? weeklyIncome * val / 100 : val / (FREQ_DIVISORS[freq])
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   async function save() {
     if (!name.trim() || !val) return
-    setSaving(true)
-    const target = parseFloat(targetAmount) || 0
-    await onSave({
-      name: encEnv(name.trim(), allocType, val),
-      target_amount: target,
-      current_amount: initial?.current_amount ?? 0,
-      deadline: null,
-      color,
-      frequency: freq,
-    })
-    setSaving(false)
+    setSaving(true); setSaveError(null)
+    try {
+      await onSave({
+        name: encEnv(name.trim(), allocType, val),
+        target_amount: parseFloat(targetAmount) || 0,
+        current_amount: initial?.current_amount ?? 0,
+        deadline: null,
+        color,
+        frequency: freq,
+      })
+      onClose()
+    } catch (e: any) {
+      setSaveError(e?.message || 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -312,6 +319,7 @@ function EnvModal({ onClose, onSave, weeklyIncome, initial }: {
           placeholder="Ej: 1500"
           style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:14,marginBottom:16,outline:'none'}}/>
 
+        {saveError && <div style={{background:'var(--red-bg)',color:'var(--red)',borderRadius:8,padding:'8px 12px',fontSize:12,marginBottom:10}}>⚠️ {saveError}</div>}
         <button onClick={save} disabled={saving||!name||!allocValue}
           style={{width:'100%',padding:13,borderRadius:10,background:'var(--blue)',color:'#fff',fontSize:14,fontWeight:500,border:'none',cursor:'pointer',opacity:(!name||!allocValue||saving)?.5:1}}>
           {saving ? 'Guardando…' : initial ? 'Guardar cambios' : 'Crear sobre'}
