@@ -109,12 +109,9 @@ export default function ResumenPage(){
         })}
       </div>}
       {/* Zona de peligro */}
-      <div style={{marginTop:40,marginBottom:48,padding:'8px 16px',background:'transparent',borderRadius:'var(--radius)',border:'none'}}>
+      <div style={{marginTop:40,marginBottom:48,padding:'12px 16px',background:'var(--red-bg)',borderRadius:'var(--radius)',border:'0.5px solid rgba(239,68,68,0.25)'}}>
         <button onClick={()=>setShowDeleteAll(true)}
-          style={{width:'100%',padding:'6px 10px',borderRadius:'8px',background:'rgba(107,114,128,0.08)',color:'rgba(55,65,81,0.95)',border:'1px solid rgba(107,114,128,0.2)',fontSize:12,fontWeight:500,cursor:'pointer'}}
-        />
-        <button onClick={()=>setShowDeleteAll(true)}
-          style={{width:'100%',padding:'6px 10px',borderRadius:'8px',background:'rgba(107,114,128,0.08)',color:'rgba(55,65,81,0.95)',border:'1px solid rgba(107,114,128,0.2)',fontSize:12,fontWeight:500,cursor:'pointer'}}>
+          style={{width:'100%',padding:'6px 10px',borderRadius:'8px',background:'rgba(239,68,68,0.85)',color:'#fff',border:'1px solid rgba(239,68,68,0.95)',fontSize:12,fontWeight:500,cursor:'pointer'}}>
           Borrar todos los datos
         </button>
       </div>
