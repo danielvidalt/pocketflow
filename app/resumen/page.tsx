@@ -109,10 +109,10 @@ export default function ResumenPage(){
         })}
       </div>}
       {/* Zona de peligro */}
-      <div style={{marginTop:8,marginBottom:10,padding:'14px 16px',background:'var(--red-bg)',borderRadius:'var(--radius)',border:'0.5px solid var(--red)'}}>
+      <div style={{marginTop:20,marginBottom:10,padding:'12px 16px',background:'var(--red-bg)',borderRadius:'var(--radius)',border:'0.5px solid var(--red)'}}>
         <div style={{fontSize:11,fontWeight:600,color:'var(--red)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Zona de peligro</div>
         <button onClick={()=>setShowDeleteAll(true)}
-          style={{width:'100%',padding:11,borderRadius:'var(--radius-sm)',background:'var(--red)',color:'#fff',border:'none',fontSize:13,fontWeight:500,cursor:'pointer'}}>
+          style={{width:'100%',padding:'10px 12px',borderRadius:'8px',background:'var(--red)',color:'#fff',border:'none',fontSize:13,fontWeight:500,cursor:'pointer'}}>
           Borrar todos los datos
         </button>
       </div>
