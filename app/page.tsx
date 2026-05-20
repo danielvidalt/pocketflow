@@ -203,7 +203,7 @@ export default function HomePage(){
           <div className="flex items-center justify-between" style={{paddingTop:16,borderTop:'0.5px solid var(--border)'}}>
             <div>
               <div style={{fontSize:13,fontWeight:500,color:'var(--text1)'}}>Vista mensual</div>
-              <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>Agrega "Este mes" en el selector del inicio</div>
+              <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>Agrega &quot;Este mes&quot; en el selector del inicio</div>
             </div>
             <button onClick={()=>updateSetting('showMonth',!settings.showMonth)}
               style={{width:44,height:26,borderRadius:13,border:'none',cursor:'pointer',flexShrink:0,
