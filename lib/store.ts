@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { format } from 'date-fns'
 import { getClient } from './supabase'
 import type { IncomeSource, IncomeEntry, Expense, DebtPocket, SavingsGoal, RecurringExpense } from './types'
 import { weeklyEquivalent, weeklyExpenseEquivalent } from './types'
@@ -24,7 +25,7 @@ interface State {
   deleteRecurringExpense:(id:string)=>Promise<void>
   addSavingsGoal:(d:Omit<SavingsGoal,'id'|'user_id'>)=>Promise<void>
   deleteSavingsGoal:(id:string)=>Promise<void>
-  addToSavings:(id:string,amount:number)=>Promise<void>
+  addToSavings:(id:string,amount:number,date?:string)=>Promise<void>
   weeklyIncome:()=>number; weeklyFixedCosts:()=>number; todayExpenses:()=>Expense[]; weekExpenses:()=>Expense[]
 }
 
@@ -137,14 +138,25 @@ export const usePocketFlow = create<State>((set,get) => ({
     set(s=>({savingsGoals:s.savingsGoals.filter(g=>g.id!==id)}))
   },
 
-  addToSavings: async (id,amount) => {
+  addToSavings: async (id, amount, date?) => {
+    const user = await getUser()
     const db = getClient()
-    const goal = get().savingsGoals.find(g=>g.id===id)
+    const goal = get().savingsGoals.find(g => g.id === id)
     if (!goal) return
     const newAmt = goal.current_amount + amount
-    const { error } = await db.from('savings_goals').update({current_amount:newAmt}).eq('id',id)
+    const { error } = await db.from('savings_goals').update({current_amount: newAmt}).eq('id', id)
     if (error) throw new Error(error.message)
-    set(s=>({savingsGoals:s.savingsGoals.map(g=>g.id===id?{...g,current_amount:newAmt}:g)}))
+    // Record as expense so it deducts from the available balance
+    const goalName = goal.name.split('\x1F')[0]
+    const expDate = date || format(new Date(), 'yyyy-MM-dd')
+    const { data: expRow } = await db.from('expenses').insert({
+      user_id: user.id, name: `Ahorro: ${goalName}`, amount,
+      category: 'other', expense_date: expDate, is_recurring: false, note: null,
+    }).select().single()
+    set(s => ({
+      savingsGoals: s.savingsGoals.map(g => g.id === id ? {...g, current_amount: newAmt} : g),
+      expenses: expRow ? [expRow, ...s.expenses] : s.expenses,
+    }))
   },
 
   weeklyIncome: ()=>get().incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0),

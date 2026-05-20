@@ -93,8 +93,8 @@ export default function IngresosPage() {
             {src.frequency !== 'weekly' && <div style={{ fontSize: 11, color: 'var(--text3)' }}>= {formatAUD(weeklyEquivalent(src))} / semana</div>}
             <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--border)' }}>
               {isPaid
-                ? <span style={{ color: 'var(--green)', fontWeight: 500 }}>✓ Cobrado esta semana</span>
-                : 'Pendiente de cobro esta semana'}
+                ? <span style={{ color: 'var(--green)', fontWeight: 500 }}>✓ Ingresado esta semana</span>
+                : 'Pendiente esta semana'}
             </div>
 
             {!isPaid && (
@@ -114,7 +114,7 @@ export default function IngresosPage() {
                       onClick={() => handleRegister(src)}
                       disabled={saving}
                       style={{ flex: 1, padding: '11px 0', borderRadius: 8, background: src.color, color: '#fff', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', opacity: saving ? .6 : 1 }}>
-                      {saving ? 'Guardando…' : `Confirmar — ${formatAUD(src.amount)}`}
+                      {saving ? 'Guardando…' : `Registrar ingreso — ${formatAUD(src.amount)}`}
                     </button>
                     <button onClick={() => { setRegisteringId(null); setError(null) }}
                       style={{ padding: '11px 14px', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: 13 }}>
@@ -146,7 +146,7 @@ export default function IngresosPage() {
       {/* Historial de la semana */}
       {incomeEntries.filter(e => e.received_at >= wkStart).length > 0 && (
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1.5px solid var(--border)' }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Cobros registrados esta semana</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Ingresos registrados esta semana</div>
           {incomeEntries
             .filter(e => e.received_at >= wkStart)
             .sort((a, b) => b.received_at.localeCompare(a.received_at))

@@ -156,8 +156,8 @@ export default function GastosPage() {
           value={formatAUD(Math.abs(weekRemaining))}
           valueColor={weekRemaining >= 0 ? 'var(--green)' : 'var(--red)'}
           sub={weekRemaining >= 0
-            ? `${formatAUD(weekCollected)} cobrado · ${formatAUD(weekSpent)} gastado`
-            : `Gastaste ${formatAUD(Math.abs(weekRemaining))} más de lo cobrado`} />
+            ? `${formatAUD(weekCollected)} ingresado · ${formatAUD(weekSpent)} gastado`
+            : `Gastaste ${formatAUD(Math.abs(weekRemaining))} más de lo ingresado`} />
       </div>
 
       {/* Formulario */}

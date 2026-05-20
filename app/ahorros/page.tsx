@@ -28,7 +28,7 @@ function fmtDay(dateStr: string) {
 
 export default function AhorrosPage() {
   const { savingsGoals, addSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome } = usePocketFlow()
-  const today = new Date().toISOString().split('T')[0]
+  const today = format(new Date(), 'yyyy-MM-dd')
   const [showNew, setShowNew] = useState(false)
   const [addingTo, setAddingTo] = useState<string|null>(null)
   const [addAmt, setAddAmt] = useState('')
@@ -41,7 +41,7 @@ export default function AhorrosPage() {
   async function handleAdd(id: string) {
     const amt = parseFloat(addAmt); if (!amt || amt <= 0) return
     setSaving(true)
-    await addToSavings(id, amt)
+    await addToSavings(id, amt, addDate)
     setAddAmt(''); setAddDate(today); setAddingTo(null); setSaving(false)
   }
 
