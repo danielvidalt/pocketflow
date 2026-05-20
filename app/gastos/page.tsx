@@ -67,7 +67,9 @@ export default function GastosPage() {
 
   // Modal de asignación a sobre (aparece tras guardar un gasto diario)
   const [justSavedExpense, setJustSavedExpense] = useState<Expense | null>(null)
+  const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null)
   const [assignSaving, setAssignSaving] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
   const activeFixed = recurringExpenses.filter(e => e.is_active)
 
   // Hora LOCAL siempre, evita que gastos "se sumen pero no aparezcan"
@@ -128,7 +130,7 @@ export default function GastosPage() {
     try {
       const expense = await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
       setAmount(''); setNote(''); setSelCat('food')
-      if (activeFixed.length > 0) setJustSavedExpense(expense)
+      if (activeFixed.length > 0) { setSelectedEnvId(null); setAssignError(null); setJustSavedExpense(expense) }
     } catch (e: any) {
       setSaveError(e?.message || 'Error al guardar. Intentá de nuevo.')
     } finally {
@@ -375,9 +377,11 @@ export default function GastosPage() {
             <button onClick={() => setJustSavedExpense(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text3)" /></button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
-            {justSavedExpense.name} · {formatAUD(justSavedExpense.amount)}
+            Gasto registrado: <strong style={{ color: 'var(--text1)' }}>{justSavedExpense.name}</strong> · {formatAUD(justSavedExpense.amount)}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+
+          {/* Lista de sobres — tocar selecciona, no guarda aún */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto', marginBottom: 12 }}>
             {activeFixed.map(env => {
               const { name: envName } = decFixed(env.name)
               const envColor = CAT_COLORS[env.category]
@@ -385,24 +389,46 @@ export default function GastosPage() {
               const envAllocated = fixedExpenseAllocations
                 .filter(a => a.recurring_expense_id === env.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
                 .reduce((s, a) => s + a.amount, 0)
+              const isSelected = selectedEnvId === env.id
               return (
-                <button key={env.id} disabled={assignSaving} onClick={async () => {
-                  setAssignSaving(true)
-                  await addFixedAllocation(env.id, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id)
-                  setAssignSaving(false); setJustSavedExpense(null)
-                }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, background: 'var(--bg2)', border: `1.5px solid ${envColor}44`, cursor: 'pointer', textAlign: 'left', opacity: assignSaving ? .6 : 1 }}>
+                <button key={env.id} onClick={() => setSelectedEnvId(isSelected ? null : env.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                    background: isSelected ? envColor + '18' : 'var(--bg2)',
+                    border: isSelected ? `2px solid ${envColor}` : `1.5px solid ${envColor}33` }}>
                   <span style={{ fontSize: 20 }}>{ICONS[env.category]}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{envName}</div>
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>{FREQ_LABELS[env.frequency]} · {formatAUD(envAllocated)} de {formatAUD(env.amount)}</div>
                   </div>
-                  <span style={{ fontSize: 12, color: envColor, fontWeight: 600, flexShrink: 0 }}>Asignar</span>
+                  {isSelected && <span style={{ fontSize: 16, color: envColor, flexShrink: 0 }}>✓</span>}
                 </button>
               )
             })}
           </div>
+
+          {assignError && (
+            <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 10 }}>
+              ⚠️ {assignError}
+            </div>
+          )}
+
+          {/* Botón de confirmación — solo activo si hay sobre seleccionado */}
+          <button disabled={!selectedEnvId || assignSaving} onClick={async () => {
+            if (!selectedEnvId) return
+            setAssignSaving(true); setAssignError(null)
+            try {
+              await addFixedAllocation(selectedEnvId, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id)
+              setJustSavedExpense(null)
+            } catch {
+              setAssignError('No se pudo asignar. Verificá que la migración de Supabase esté aplicada.')
+            } finally {
+              setAssignSaving(false)
+            }
+          }} style={{ width: '100%', padding: '12px 0', borderRadius: 8, background: selectedEnvId ? 'var(--blue)' : 'var(--bg3)', color: selectedEnvId ? '#fff' : 'var(--text3)', border: 'none', fontSize: 14, fontWeight: 600, cursor: selectedEnvId ? 'pointer' : 'default', marginBottom: 8, opacity: assignSaving ? .6 : 1 }}>
+            {assignSaving ? 'Guardando…' : selectedEnvId ? `Confirmar asignación` : 'Seleccioná un sobre'}
+          </button>
           <button onClick={() => setJustSavedExpense(null)}
-            style={{ width: '100%', marginTop: 12, padding: '11px 0', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>
+            style={{ width: '100%', padding: '11px 0', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>
             No asignar
           </button>
         </div>
