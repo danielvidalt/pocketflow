@@ -89,9 +89,9 @@ export default function HomePage(){
           <span style={{fontSize:16,fontWeight:700,color:'var(--red)'}}>{formatAUD(todayTotal)}</span>
         </div>
         {todayExps.length===0&&<p style={{fontSize:13,color:'var(--text3)',paddingBottom:4}}>Sin gastos registrados hoy</p>}
-        {todayExps.slice(0,3).map((exp,i)=>(<div key={exp.id} className="flex items-center justify-between gap-3 py-2" style={{borderBottom:i<Math.min(todayExps.length,3)-1?'0.5px solid var(--border)':'none'}}>
-          <div style={{fontSize:13,color:'var(--text1)'}}>{exp.name}</div>
-          <span style={{fontSize:13,fontWeight:500,color:'var(--red)',whiteSpace:'nowrap'}}>−{formatAUD(exp.amount)}</span>
+        {todayExps.map((exp,i)=>(<div key={exp.id} className="flex items-center justify-between gap-3 py-2" style={{borderBottom:i<todayExps.length-1?'0.5px solid var(--border)':'none'}}>
+          <div style={{fontSize:13,color:'var(--text1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{exp.name}</div>
+          <span style={{fontSize:13,fontWeight:500,color:'var(--red)',whiteSpace:'nowrap',flexShrink:0}}>−{formatAUD(exp.amount)}</span>
         </div>))}
         <BtnGhost className="mt-2.5"><Link href="/gastos/historial" className="w-full flex items-center justify-center" style={{color:'var(--text2)',fontSize:13}}>Ver todos los gastos</Link></BtnGhost>
       </div>

@@ -98,8 +98,12 @@ export default function GastosPage() {
 
   async function save() {
     const amt = parseFloat(amount); if (!amt || amt <= 0) return; setSaving(true)
-    await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
-    setAmount(''); setNote(''); setSelCat('food'); setSaving(false); ref.current?.focus()
+    try {
+      await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
+      setAmount(''); setNote(''); setSelCat('food')
+    } finally {
+      setSaving(false); ref.current?.focus()
+    }
   }
 
   // ── Fixed tab ──────────────────────────────────────────────────────────────
