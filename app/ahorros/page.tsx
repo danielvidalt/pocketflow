@@ -73,20 +73,22 @@ export default function AhorrosPage() {
                     placeholder="0.00"
                     style={{flex:1,fontSize:22,fontWeight:600,color:'var(--text1)',border:'none',background:'transparent',outline:'none',borderBottom:'2px solid var(--blue)',paddingBottom:2}}/>
                 </div>
-                <div className="flex gap-2 items-center">
-                  <div style={{position:'relative',flex:1}}>
-                    <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:8,padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
-                      📅 {fmtDay(addDate)}
-                    </div>
-                    <input type="date" value={addDate} max={today} onChange={e => setAddDate(e.target.value||today)}
-                      style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                <div style={{position:'relative',marginBottom:8}}>
+                  <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:8,padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
+                    📅 {fmtDay(addDate)}
                   </div>
+                  <input type="date" value={addDate} max={today} onChange={e => setAddDate(e.target.value||today)}
+                    style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                </div>
+                <div className="flex gap-2">
                   <button onClick={() => handleAdd(g.id)} disabled={saving||!addAmt}
-                    style={{padding:'8px 18px',borderRadius:8,background:'var(--green)',color:'#fff',border:'none',fontSize:13,fontWeight:500,cursor:'pointer',opacity:(!addAmt||saving)?.5:1}}>
-                    {saving ? '…' : 'Guardar'}
+                    style={{flex:1,padding:'10px 0',borderRadius:8,background:'var(--green)',color:'#fff',border:'none',fontSize:14,fontWeight:600,cursor:'pointer',opacity:(!addAmt||saving)?.5:1}}>
+                    {saving ? 'Guardando…' : 'Guardar'}
                   </button>
                   <button onClick={() => { setAddingTo(null); setAddAmt('') }}
-                    style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:20,lineHeight:1}}>×</button>
+                    style={{padding:'10px 14px',borderRadius:8,background:'var(--bg2)',border:'none',cursor:'pointer',color:'var(--text2)',fontSize:13}}>
+                    Cancelar
+                  </button>
                 </div>
               </div>
             ) : (

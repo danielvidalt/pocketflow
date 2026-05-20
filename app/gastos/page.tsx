@@ -110,9 +110,6 @@ export default function GastosPage(){
           <span style={{fontSize:22,fontWeight:600,color:'var(--text3)'}}>$</span>
           <input ref={ref} type="number" inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} onKeyDown={e=>e.key==='Enter'&&save()} placeholder="0.00"
             style={{flex:1,fontSize:28,fontWeight:600,color:'var(--text1)',border:'none',background:'transparent',outline:'none',borderBottom:'2px solid var(--blue)',paddingBottom:2}}/>
-          <button onClick={save} disabled={saving||!amount} style={{fontSize:13,fontWeight:500,padding:'10px 16px',borderRadius:'var(--radius-sm)',background:'var(--blue)',color:'#fff',border:'none',cursor:'pointer',whiteSpace:'nowrap',opacity:(!amount||saving)?.5:1}}>
-            {saving?'...':'Guardar'}
-          </button>
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{scrollbarWidth:'none',marginBottom:10}}>
           {CATS.map(([id,label])=>{const on=selCat===id;return(
@@ -121,16 +118,19 @@ export default function GastosPage(){
             </button>
           )})}
         </div>
-        <div className="flex items-center gap-2" style={{marginBottom:10}}>
+        <div className="flex gap-2" style={{marginBottom:10}}>
           <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="Nota opcional…" style={{flex:1,fontSize:13,color:'var(--text2)',border:'none',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',outline:'none'}}/>
           <div style={{position:'relative',flexShrink:0}}>
-            <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
-              📅 {fmtDay(expDate)}
+            <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 10px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
+              📅 {format(parseISO(expDate),'d MMM',{locale:es})}
             </div>
             <input type="date" value={expDate} max={today} onChange={e=>setExpDate(e.target.value||today)}
               style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
           </div>
         </div>
+        <button onClick={save} disabled={saving||!amount} style={{width:'100%',padding:'12px 0',borderRadius:'var(--radius-sm)',background:'var(--blue)',color:'#fff',fontSize:14,fontWeight:600,border:'none',cursor:'pointer',opacity:(!amount||saving)?.5:1}}>
+          {saving?'Guardando…':'Guardar gasto'}
+        </button>
       </div>
       <div className="scroll-area" style={{padding:'0 16px 16px'}}>
         {recentGroups.map(({label,items})=>{
@@ -166,9 +166,6 @@ export default function GastosPage(){
           <span style={{fontSize:22,fontWeight:600,color:'var(--text3)'}}>$</span>
           <input ref={fRef} type="number" inputMode="decimal" value={fAmount} onChange={e=>setFAmount(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveFixed()} placeholder="0.00"
             style={{flex:1,fontSize:28,fontWeight:600,color:'var(--text1)',border:'none',background:'transparent',outline:'none',borderBottom:'2px solid var(--blue)',paddingBottom:2}}/>
-          <button onClick={saveFixed} disabled={fSaving||!fAmount} style={{fontSize:13,fontWeight:500,padding:'10px 16px',borderRadius:'var(--radius-sm)',background:'var(--blue)',color:'#fff',border:'none',cursor:'pointer',whiteSpace:'nowrap',opacity:(!fAmount||fSaving)?.5:1}}>
-            {fSaving?'...':'Agregar'}
-          </button>
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{scrollbarWidth:'none',marginBottom:8}}>
           {FIXED_FREQS.map(({id,label})=>{const on=fFreq===id;return(
@@ -184,16 +181,19 @@ export default function GastosPage(){
             </button>
           )})}
         </div>
-        <div className="flex items-center gap-2">
-          <input type="text" value={fName} onChange={e=>setFName(e.target.value)} placeholder="Nombre del gasto (ej: Renta, Netflix…)" style={{flex:1,fontSize:13,color:'var(--text2)',border:'none',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',outline:'none'}}/>
+        <div className="flex gap-2" style={{marginBottom:10}}>
+          <input type="text" value={fName} onChange={e=>setFName(e.target.value)} placeholder="Nombre (ej: Renta, Netflix…)" style={{flex:1,fontSize:13,color:'var(--text2)',border:'none',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',outline:'none'}}/>
           <div style={{position:'relative',flexShrink:0}}>
-            <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
-              📅 {fmtDay(fDate)}
+            <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 10px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
+              📅 {format(parseISO(fDate),'d MMM',{locale:es})}
             </div>
             <input type="date" value={fDate} max={today} onChange={e=>setFDate(e.target.value||today)}
               style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
           </div>
         </div>
+        <button onClick={saveFixed} disabled={fSaving||!fAmount} style={{width:'100%',padding:'12px 0',borderRadius:'var(--radius-sm)',background:'var(--blue)',color:'#fff',fontSize:14,fontWeight:600,border:'none',cursor:'pointer',opacity:(!fAmount||fSaving)?.5:1}}>
+          {fSaving?'Guardando…':'Agregar gasto fijo'}
+        </button>
       </div>
       <div className="scroll-area" style={{padding:'0 16px 16px'}}>
         {activeFixed.length===0&&<EmptyState message="Sin gastos fijos registrados"/>}
