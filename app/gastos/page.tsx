@@ -51,15 +51,15 @@ export default function GastosPage(){
   }
 
   // fixed tab state
-  const [fAmount,setFAmount]=useState(''); const [fName,setFName]=useState(''); const [fCat,setFCat]=useState<ExpenseCategory>('other'); const [fFreq,setFFreq]=useState<'weekly'|'fortnightly'|'monthly'>('monthly'); const [fSaving,setFSaving]=useState(false)
+  const [fAmount,setFAmount]=useState(''); const [fName,setFName]=useState(''); const [fCat,setFCat]=useState<ExpenseCategory>('other'); const [fFreq,setFFreq]=useState<'weekly'|'fortnightly'|'monthly'>('monthly'); const [fSaving,setFSaving]=useState(false); const [fDate,setFDate]=useState(today)
   const fRef=useRef<HTMLInputElement>(null); useEffect(()=>{if(tab==='fixed')fRef.current?.focus()},[tab])
   const weeklyFixed=weeklyFixedCosts()
   const activeFixed=recurringExpenses.filter(e=>e.is_active)
 
   async function saveFixed(){
     const amt=parseFloat(fAmount); if(!amt||amt<=0)return; setFSaving(true)
-    await addRecurringExpense({name:fName.trim()||CAT_LABELS[fCat],amount:amt,category:fCat,frequency:fFreq,is_active:true})
-    setFAmount('');setFName('');setFCat('other');setFFreq('monthly');setFSaving(false);fRef.current?.focus()
+    await addRecurringExpense({name:fName.trim()||CAT_LABELS[fCat],amount:amt,category:fCat,frequency:fFreq,is_active:true,start_date:fDate})
+    setFAmount('');setFName('');setFCat('other');setFFreq('monthly');setFDate(today);setFSaving(false);fRef.current?.focus()
   }
 
   return(<>
@@ -155,7 +155,16 @@ export default function GastosPage(){
             </button>
           )})}
         </div>
-        <input type="text" value={fName} onChange={e=>setFName(e.target.value)} placeholder="Nombre del gasto (ej: Renta, Netflix…)" style={{width:'100%',fontSize:13,color:'var(--text2)',border:'none',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',outline:'none'}}/>
+        <div className="flex items-center gap-2">
+          <input type="text" value={fName} onChange={e=>setFName(e.target.value)} placeholder="Nombre del gasto (ej: Renta, Netflix…)" style={{flex:1,fontSize:13,color:'var(--text2)',border:'none',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',outline:'none'}}/>
+          <div style={{position:'relative',flexShrink:0}}>
+            <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
+              📅 {fmtDay(fDate)}
+            </div>
+            <input type="date" value={fDate} max={today} onChange={e=>setFDate(e.target.value||today)}
+              style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+          </div>
+        </div>
       </div>
       <div className="scroll-area" style={{padding:'0 16px 16px'}}>
         {activeFixed.length===0&&<EmptyState message="Sin gastos fijos registrados"/>}
@@ -169,7 +178,7 @@ export default function GastosPage(){
               <div style={{fontSize:18,width:34,height:34,borderRadius:9,background:CAT_COLORS[e.category]+'22',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{ICONS[e.category]}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,color:'var(--text1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.name}</div>
-                <div style={{fontSize:11,color:'var(--text3)'}}>{FREQ_LABELS[e.frequency]} · {formatAUD(weeklyExpenseEquivalent(e))}/sem · desde {fmtDay(e.created_at.split('T')[0])}</div>
+                <div style={{fontSize:11,color:'var(--text3)'}}>{FREQ_LABELS[e.frequency]} · {formatAUD(weeklyExpenseEquivalent(e))}/sem · desde {fmtDay(e.start_date||e.created_at.split('T')[0])}</div>
               </div>
               <div style={{textAlign:'right',flexShrink:0}}>
                 <div style={{fontSize:13,fontWeight:500,color:'var(--red)'}}>{formatAUD(e.amount)}</div>
