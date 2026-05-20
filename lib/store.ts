@@ -23,6 +23,9 @@ interface State {
   deleteExpense:(id:string)=>Promise<void>
   deleteExpensesByDate:(date:string)=>Promise<void>
   deleteAllData:()=>Promise<void>
+  deleteIncomeEntry:(id:string)=>Promise<void>
+  deleteAllIncomeEntries:()=>Promise<void>
+  deleteSavingsEntry:(expenseId:string,goalId:string,amount:number)=>Promise<void>
   addRecurringExpense:(d:Omit<RecurringExpense,'id'|'user_id'|'created_at'>)=>Promise<void>
   deleteRecurringExpense:(id:string)=>Promise<void>
   addSavingsGoal:(d:Omit<SavingsGoal,'id'|'user_id'>)=>Promise<void>
@@ -131,6 +134,32 @@ export const usePocketFlow = create<State>((set,get) => ({
       db.from('savings_goals').delete().eq('user_id', user.id),
     ])
     set({expenses:[],incomeEntries:[],incomeSources:[],recurringExpenses:[],savingsGoals:[]})
+  },
+
+  deleteIncomeEntry: async (id) => {
+    const { error } = await getClient().from('income_entries').delete().eq('id', id)
+    if (error) throw new Error(error.message)
+    set(s=>({incomeEntries:s.incomeEntries.filter(e=>e.id!==id)}))
+  },
+
+  deleteAllIncomeEntries: async () => {
+    const user = await getUser()
+    const { error } = await getClient().from('income_entries').delete().eq('user_id', user.id)
+    if (error) throw new Error(error.message)
+    set({incomeEntries:[]})
+  },
+
+  deleteSavingsEntry: async (expenseId, goalId, amount) => {
+    const db = getClient()
+    const goal = get().savingsGoals.find(g=>g.id===goalId)
+    if (!goal) return
+    const newAmt = Math.max(0, goal.current_amount - amount)
+    await db.from('expenses').delete().eq('id', expenseId)
+    await db.from('savings_goals').update({current_amount: newAmt}).eq('id', goalId)
+    set(s=>({
+      expenses: s.expenses.filter(e=>e.id!==expenseId),
+      savingsGoals: s.savingsGoals.map(g=>g.id===goalId?{...g,current_amount:newAmt}:g),
+    }))
   },
 
   addRecurringExpense: async (data) => {

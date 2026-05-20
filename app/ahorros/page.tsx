@@ -27,7 +27,7 @@ function fmtDay(dateStr: string) {
 }
 
 export default function AhorrosPage() {
-  const { savingsGoals, addSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome } = usePocketFlow()
+  const { savingsGoals, expenses, addSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome, deleteSavingsEntry } = usePocketFlow()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [showNew, setShowNew] = useState(false)
   const [addingTo, setAddingTo] = useState<string|null>(null)
@@ -73,6 +73,31 @@ export default function AhorrosPage() {
                 </div>
               </div>
             )}
+            {/* Historial de movimientos de este sobre */}
+            {(() => {
+              const entries = expenses
+                .filter(e => e.name === `Ahorro: ${name}`)
+                .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
+              if (entries.length === 0) return null
+              return (
+                <div style={{marginBottom:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
+                  <div className="flex items-center justify-between" style={{marginBottom:6}}>
+                    <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>Historial</span>
+                  </div>
+                  {entries.map(e => (
+                    <div key={e.id} className="flex items-center gap-2 py-1.5" style={{borderBottom:'0.5px solid var(--border)'}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,color:'var(--text3)'}}>{fmtDay(e.expense_date)}</div>
+                      </div>
+                      <span style={{fontSize:13,fontWeight:500,color:'var(--blue)',whiteSpace:'nowrap'}}>+{formatAUD(e.amount)}</span>
+                      <button onClick={() => deleteSavingsEntry(e.id, g.id, e.amount)}
+                        style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+
             {addingTo === g.id ? (
               <div>
                 <div className="flex gap-2 items-center" style={{marginBottom:8}}>

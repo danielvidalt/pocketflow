@@ -26,7 +26,7 @@ function weekStart() {
 }
 
 export default function IngresosPage() {
-  const { incomeSources, incomeEntries, registerPayment, addIncomeSource, deleteIncomeSource, weeklyIncome } = usePocketFlow()
+  const { incomeSources, incomeEntries, registerPayment, addIncomeSource, deleteIncomeSource, weeklyIncome, deleteIncomeEntry, deleteAllIncomeEntries } = usePocketFlow()
   const [showForm, setShowForm] = useState(false)
   const [registeringId, setRegisteringId] = useState<string | null>(null)
   const [payDate, setPayDate] = useState(localToday)
@@ -143,12 +143,17 @@ export default function IngresosPage() {
         </div>
       </button>
 
-      {/* Historial de la semana */}
-      {incomeEntries.filter(e => e.received_at >= wkStart).length > 0 && (
+      {/* Historial de ingresos */}
+      {incomeEntries.length > 0 && (
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1.5px solid var(--border)' }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Ingresos registrados esta semana</div>
+          <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Historial de ingresos</div>
+            <button onClick={() => deleteAllIncomeEntries()}
+              style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>
+              Borrar historial
+            </button>
+          </div>
           {incomeEntries
-            .filter(e => e.received_at >= wkStart)
             .sort((a, b) => b.received_at.localeCompare(a.received_at))
             .map(e => {
               const src = incomeSources.find(s => s.id === e.source_id)
@@ -160,6 +165,8 @@ export default function IngresosPage() {
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDay(e.received_at)}</div>
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--green)', whiteSpace: 'nowrap' }}>+{formatAUD(e.amount)}</span>
+                  <button onClick={() => deleteIncomeEntry(e.id)}
+                    style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
                 </div>
               )
             })}
