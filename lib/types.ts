@@ -11,7 +11,7 @@ export type Expense = { id:string; user_id:string; name:string; amount:number; c
 export type RecurringExpense = { id:string; user_id:string; name:string; amount:number; category:ExpenseCategory; frequency:'weekly'|'fortnightly'|'monthly'; is_active:boolean; created_at:string }
 export function weeklyExpenseEquivalent(exp: Pick<RecurringExpense,'amount'|'frequency'>): number { return exp.amount / FREQ_DIVISORS[exp.frequency] }
 export type DebtPocket = { id:string; user_id:string; name:string; target_amount:number; target_currency:string; current_amount_aud:number; weekly_goal_aud:number; deadline:string|null; emoji:string; created_at:string }
-export type SavingsGoal = { id:string; user_id:string; name:string; target_amount:number; current_amount:number; deadline:string|null; color:string }
+export type SavingsGoal = { id:string; user_id:string; name:string; target_amount:number; current_amount:number; deadline:string|null; color:string; frequency:'weekly'|'fortnightly'|'monthly' }
 export type FixedExpenseAllocation = { id:string; user_id:string; recurring_expense_id:string; amount:number; allocated_at:string; expense_id:string|null; created_at:string }
 export function weeklyEquivalent(source: Pick<IncomeSource,'amount'|'frequency'>): number { return source.amount / FREQ_DIVISORS[source.frequency] }
 export function formatAUD(amount: number): string { return new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD',minimumFractionDigits:2}).format(amount) }

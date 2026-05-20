@@ -1,39 +1,59 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD } from '@/lib/types'
+import type { SavingsGoal } from '@/lib/types'
 import { SectionHeader, EmptyState, ProgressBar } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { parseISO, format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, MoreHorizontal } from 'lucide-react'
 
 const D = '\x1F'
 const COLORS = ['#534AB7','#1D9E75','#BA7517','#D85A30','#185FA5','#993556','#3B6D11','#5F5E5A']
+const FREQS: Array<{ id: 'weekly'|'fortnightly'|'monthly'; label: string; short: string }> = [
+  { id: 'weekly',      label: 'Semanal',   short: 'sem'   },
+  { id: 'fortnightly', label: 'Quincenal', short: 'quinc' },
+  { id: 'monthly',     label: 'Mensual',   short: 'mes'   },
+]
+const FREQ_DIVISORS: Record<string, number> = { weekly: 1, fortnightly: 2, monthly: 4.33 }
 
-function encEnv(name: string, type: '%'|'$', value: number) {
-  return `${name}${D}${type}${value}`
-}
+function encEnv(name: string, type: '%'|'$', value: number) { return `${name}${D}${type}${value}` }
 function decEnv(raw: string): { name: string; type: '%'|'$'; value: number } {
   const i = raw.indexOf(D)
   if (i === -1) return { name: raw, type: '$', value: 0 }
   const rule = raw.slice(i + 1)
-  const type = rule[0] as '%'|'$'
-  const value = parseFloat(rule.slice(1)) || 0
-  return { name: raw.slice(0, i), type, value }
+  return { name: raw.slice(0, i), type: rule[0] as '%'|'$', value: parseFloat(rule.slice(1)) || 0 }
 }
 function fmtDay(dateStr: string) {
   return format(parseISO(dateStr), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
 }
 
 export default function AhorrosPage() {
-  const { savingsGoals, expenses, addSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome, deleteSavingsEntry } = usePocketFlow()
+  const { savingsGoals, expenses, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome, deleteSavingsEntry } = usePocketFlow()
   const today = format(new Date(), 'yyyy-MM-dd')
-  const [showNew, setShowNew] = useState(false)
-  const [addingTo, setAddingTo] = useState<string|null>(null)
-  const [addAmt, setAddAmt] = useState('')
-  const [addDate, setAddDate] = useState(today)
-  const [saving, setSaving] = useState(false)
+
+  const [showNew,     setShowNew]     = useState(false)
+  const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null)
+  const [addingTo,    setAddingTo]    = useState<string | null>(null)
+  const [addAmt,      setAddAmt]      = useState('')
+  const [addDate,     setAddDate]     = useState(today)
+  const [saving,      setSaving]      = useState(false)
+  const [expandedId,  setExpandedId]  = useState<string | null>(null)
+  const [menuId,      setMenuId]      = useState<string | null>(null)
+
+  const [undoItem, setUndoItem] = useState<{ label: string; restore: () => Promise<void> } | null>(null)
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function scheduleUndo(label: string, restore: () => Promise<void>) {
+    setUndoItem({ label, restore })
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(() => setUndoItem(null), 5000)
+  }
+  async function handleUndo() {
+    if (!undoItem) return
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    await undoItem.restore(); setUndoItem(null)
+  }
 
   const wIncome = weeklyIncome()
   const totalSaved = savingsGoals.reduce((s, g) => s + g.current_amount, 0)
@@ -48,67 +68,108 @@ export default function AhorrosPage() {
   return (<>
     <SectionHeader title="Sobres de Ahorro" subtitle={`Total guardado: ${formatAUD(totalSaved)}`}
       action={<button onClick={() => setShowNew(true)} style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><Plus size={18} color="var(--text2)" strokeWidth={1.7}/></button>}/>
+
     <div className="scroll-area" style={{paddingTop:16,paddingLeft:16,paddingRight:16}}>
       {savingsGoals.length === 0 && <EmptyState message="Tocá + para crear tu primer sobre de ahorro"/>}
+
       {savingsGoals.map(g => {
         const { name, type, value } = decEnv(g.name)
-        const weeklyAlloc = type === '%' ? wIncome * value / 100 : value
+        const freq = g.frequency || 'monthly'
+        const freqInfo = FREQS.find(f => f.id === freq)!
+        const weeklyAlloc = type === '%'
+          ? wIncome * value / 100
+          : value / FREQ_DIVISORS[freq]
+        const allocLabel = type === '%'
+          ? `${value}% del ingreso / ${freqInfo.short}`
+          : `${formatAUD(value)} / ${freqInfo.short}`
+        const entries = expenses
+          .filter(e => e.name === `Ahorro: ${name}`)
+          .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
+        const isExpanded = expandedId === g.id
+        const visibleEntries = isExpanded ? entries : entries.slice(0, 1)
+        const pct = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0
+
         return (
           <div key={g.id} className="card" style={{marginBottom:10,borderLeft:`3px solid ${g.color}`}}>
+            {/* Header con 3 puntitos */}
             <div className="flex items-center justify-between" style={{marginBottom:6}}>
-              <span style={{fontSize:14,fontWeight:600,color:'var(--text1)'}}>{name}</span>
-              <button onClick={() => deleteSavingsGoal(g.id)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)'}}><X size={14}/></button>
+              <button onClick={() => setExpandedId(isExpanded ? null : g.id)}
+                style={{flex:1,textAlign:'left',background:'none',border:'none',cursor:'pointer',padding:0}}>
+                <span style={{fontSize:14,fontWeight:600,color:'var(--text1)'}}>{name}</span>
+                <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>{isExpanded ? '▲' : '▼'}</span>
+              </button>
+              <div style={{position:'relative'}}>
+                <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === g.id ? null : g.id) }}
+                  style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',padding:'0 4px'}}>
+                  <MoreHorizontal size={16}/>
+                </button>
+                {menuId === g.id && (
+                  <>
+                    <div style={{position:'fixed',inset:0,zIndex:99}} onClick={() => setMenuId(null)}/>
+                    <div style={{position:'absolute',right:0,top:22,background:'var(--bg)',border:'0.5px solid var(--border)',borderRadius:10,padding:'4px 0',zIndex:100,minWidth:130,boxShadow:'0 4px 16px rgba(0,0,0,.15)'}}>
+                      <button onClick={() => { setMenuId(null); setEditingGoal(g) }}
+                        style={{display:'block',width:'100%',padding:'10px 16px',textAlign:'left',background:'none',border:'none',cursor:'pointer',fontSize:13,color:'var(--text1)'}}>Editar</button>
+                      <button onClick={() => { setMenuId(null); deleteSavingsGoal(g.id) }}
+                        style={{display:'block',width:'100%',padding:'10px 16px',textAlign:'left',background:'none',border:'none',cursor:'pointer',fontSize:13,color:'var(--red)'}}>Eliminar sobre</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* Monto + info */}
             <div style={{fontSize:28,fontWeight:700,color:'var(--text1)',marginBottom:2}}>{formatAUD(g.current_amount)}</div>
             <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>
-              Asignación: {type === '%' ? `${value}% del ingreso semanal` : `${formatAUD(value)}/sem`}
-              {weeklyAlloc > 0 && <span style={{color:'var(--blue)',fontWeight:500}}> = {formatAUD(weeklyAlloc)}/sem</span>}
+              {allocLabel}
+              {weeklyAlloc > 0 && <span style={{color:'var(--blue)',fontWeight:500}}> · {formatAUD(weeklyAlloc)}/sem</span>}
             </div>
+
             {g.target_amount > 0 && (
               <div style={{marginBottom:10}}>
-                <ProgressBar percent={g.target_amount>0?Math.min(100, (g.current_amount / g.target_amount) * 100):0} color={g.color} height={8} />
+                <ProgressBar percent={pct} color={g.color} height={8}/>
                 <div style={{display:'flex',justifyContent:'space-between',marginTop:6,fontSize:12,color:'var(--text3)'}}>
                   <span>Meta: {formatAUD(g.target_amount)}</span>
-                  <span style={{fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0, g.target_amount - g.current_amount))} faltan</span>
+                  <span style={{fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0,g.target_amount-g.current_amount))} faltan</span>
                 </div>
               </div>
             )}
-            {/* Historial de movimientos de este sobre */}
-            {(() => {
-              const entries = expenses
-                .filter(e => e.name === `Ahorro: ${name}`)
-                .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
-              if (entries.length === 0) return null
-              return (
-                <div style={{marginBottom:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
-                  <div className="flex items-center justify-between" style={{marginBottom:6}}>
-                    <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>Historial</span>
-                  </div>
-                  {entries.map(e => (
-                    <div key={e.id} className="flex items-center gap-2 py-1.5" style={{borderBottom:'0.5px solid var(--border)'}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:11,color:'var(--text3)'}}>{fmtDay(e.expense_date)}</div>
-                      </div>
-                      <span style={{fontSize:13,fontWeight:500,color:'var(--blue)',whiteSpace:'nowrap'}}>+{formatAUD(e.amount)}</span>
-                      <button onClick={() => deleteSavingsEntry(e.id, g.id, e.amount)}
-                        style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
 
+            {/* Historial expandible */}
+            {entries.length > 0 && (
+              <div style={{marginBottom:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
+                <div className="flex items-center justify-between" style={{marginBottom:4}}>
+                  <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>Movimientos</span>
+                  {entries.length > 1 && (
+                    <button onClick={() => setExpandedId(isExpanded ? null : g.id)}
+                      style={{fontSize:11,color:'var(--blue)',background:'none',border:'none',cursor:'pointer',fontWeight:500}}>
+                      {isExpanded ? 'Ver menos' : `Ver todos (${entries.length})`}
+                    </button>
+                  )}
+                </div>
+                {visibleEntries.map(e => (
+                  <div key={e.id} className="flex items-center gap-2 py-1.5" style={{borderBottom:'0.5px solid var(--border)'}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,color:'var(--text3)'}}>{fmtDay(e.expense_date)}</div>
+                    </div>
+                    <span style={{fontSize:13,fontWeight:500,color:g.color,whiteSpace:'nowrap'}}>+{formatAUD(e.amount)}</span>
+                    <button onClick={() => { const snap = e; const gId = g.id; deleteSavingsEntry(snap.id,gId,snap.amount); scheduleUndo('Movimiento eliminado', async () => { await addToSavings(gId,snap.amount,snap.expense_date) }) }}
+                      style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Agregar al sobre */}
             {addingTo === g.id ? (
               <div>
                 <div className="flex gap-2 items-center" style={{marginBottom:8}}>
                   <span style={{fontSize:20,fontWeight:600,color:'var(--text3)'}}>$</span>
                   <input type="number" inputMode="decimal" value={addAmt} autoFocus
-                    onChange={e => setAddAmt(e.target.value)}
-                    placeholder="0.00"
-                    style={{flex:1,fontSize:22,fontWeight:600,color:'var(--text1)',border:'none',background:'transparent',outline:'none',borderBottom:'2px solid var(--blue)',paddingBottom:2}}/>
+                    onChange={e => setAddAmt(e.target.value)} placeholder="0.00"
+                    style={{flex:1,fontSize:22,fontWeight:600,color:'var(--text1)',border:'none',background:'transparent',outline:'none',borderBottom:`2px solid ${g.color}`,paddingBottom:2}}/>
                 </div>
                 <div style={{position:'relative',marginBottom:8}}>
-                  <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:8,padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
+                  <div style={{fontSize:12,fontWeight:500,color:g.color,background:'var(--bg2)',borderRadius:8,padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
                     📅 {fmtDay(addDate)}
                   </div>
                   <input type="date" value={addDate} onChange={e => setAddDate(e.target.value||today)}
@@ -116,7 +177,7 @@ export default function AhorrosPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => handleAdd(g.id)} disabled={saving||!addAmt}
-                    style={{flex:1,padding:'10px 0',borderRadius:8,background:'var(--green)',color:'#fff',border:'none',fontSize:14,fontWeight:600,cursor:'pointer',opacity:(!addAmt||saving)?.5:1}}>
+                    style={{flex:1,padding:'10px 0',borderRadius:8,background:g.color,color:'#fff',border:'none',fontSize:14,fontWeight:600,cursor:'pointer',opacity:(!addAmt||saving)?.5:1}}>
                     {saving ? 'Guardando…' : 'Guardar'}
                   </button>
                   <button onClick={() => { setAddingTo(null); setAddAmt('') }}
@@ -135,67 +196,125 @@ export default function AhorrosPage() {
         )
       })}
     </div>
-    {showNew && <NewEnvModal onClose={() => setShowNew(false)} onSave={addSavingsGoal} weeklyIncome={wIncome}/>}
+
+    {showNew && (
+      <EnvModal
+        onClose={() => setShowNew(false)}
+        onSave={async (d) => { await addSavingsGoal(d); setShowNew(false) }}
+        weeklyIncome={wIncome}
+      />
+    )}
+    {editingGoal && (
+      <EnvModal
+        initial={editingGoal}
+        onClose={() => setEditingGoal(null)}
+        onSave={async (d) => { await updateSavingsGoal(editingGoal.id, d); setEditingGoal(null) }}
+        weeklyIncome={wIncome}
+      />
+    )}
+
+    {undoItem && (
+      <div style={{position:'fixed',bottom:88,left:'50%',transform:'translateX(-50%)',background:'var(--text1)',color:'var(--bg)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:16,zIndex:150,fontSize:13,maxWidth:380,width:'calc(100% - 32px)',boxShadow:'0 4px 16px rgba(0,0,0,.3)'}}>
+        <span style={{flex:1}}>{undoItem.label}</span>
+        <button onClick={handleUndo} style={{color:'#4ea8ff',fontWeight:700,background:'none',border:'none',cursor:'pointer',fontSize:13,padding:0}}>Deshacer</button>
+      </div>
+    )}
     <BottomNav/>
   </>)
 }
 
-function NewEnvModal({ onClose, onSave, weeklyIncome }: { onClose:()=>void; onSave:(d:any)=>Promise<void>; weeklyIncome:number }) {
-  const [name, setName] = useState('')
-  const [allocType, setAllocType] = useState<'%'|'$'>('%')
-  const [allocValue, setAllocValue] = useState('')
-  const [color, setColor] = useState(COLORS[0])
-  const [saving, setSaving] = useState(false)
-  const [targetAmount, setTargetAmount] = useState('')
+function EnvModal({ onClose, onSave, weeklyIncome, initial }: {
+  onClose: () => void
+  onSave: (d: Omit<SavingsGoal,'id'|'user_id'>) => Promise<void>
+  weeklyIncome: number
+  initial?: SavingsGoal
+}) {
+  const existing = initial ? decEnv(initial.name) : null
+  const [name,        setName]        = useState(existing?.name ?? '')
+  const [allocType,   setAllocType]   = useState<'%'|'$'>(existing?.type ?? '%')
+  const [allocValue,  setAllocValue]  = useState(existing ? String(existing.value) : '')
+  const [color,       setColor]       = useState(initial?.color ?? COLORS[0])
+  const [freq,        setFreq]        = useState<'weekly'|'fortnightly'|'monthly'>(initial?.frequency ?? 'monthly')
+  const [targetAmount,setTargetAmount]= useState(initial?.target_amount ? String(initial.target_amount) : '')
+  const [saving,      setSaving]      = useState(false)
 
+  const freqInfo = FREQS.find(f => f.id === freq)!
   const val = parseFloat(allocValue) || 0
-  const preview = allocType === '%' ? weeklyIncome * val / 100 : val
+  const weeklyPreview = allocType === '%' ? weeklyIncome * val / 100 : val / (FREQ_DIVISORS[freq])
 
   async function save() {
     if (!name.trim() || !val) return
     setSaving(true)
     const target = parseFloat(targetAmount) || 0
-    await onSave({ name: encEnv(name.trim(), allocType, val), target_amount: target, current_amount: 0, deadline: null, color })
-    onClose()
+    await onSave({
+      name: encEnv(name.trim(), allocType, val),
+      target_amount: target,
+      current_amount: initial?.current_amount ?? 0,
+      deadline: null,
+      color,
+      frequency: freq,
+    })
+    setSaving(false)
   }
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'flex-end',zIndex:200}}>
       <div className="slide-up" style={{width:'100%',maxWidth:430,margin:'0 auto',background:'var(--bg)',borderRadius:'20px 20px 0 0',padding:20}}>
         <div className="flex items-center justify-between" style={{marginBottom:16}}>
-          <span style={{fontSize:16,fontWeight:600,color:'var(--text1)'}}>Nuevo sobre de ahorro</span>
+          <span style={{fontSize:16,fontWeight:600,color:'var(--text1)'}}>{initial ? 'Editar sobre' : 'Nuevo sobre de ahorro'}</span>
           <button onClick={onClose}><X size={20} color="var(--text3)"/></button>
         </div>
+
         <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Nombre</label>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Vacaciones, Emergencias, iPhone…"
           style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:14,marginBottom:14,outline:'none'}}/>
-        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:8}}>Asignación semanal</label>
+
+        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:8}}>Frecuencia de ahorro</label>
+        <div style={{display:'flex',gap:4,marginBottom:14}}>
+          {FREQS.map(f => (
+            <button key={f.id} onClick={() => setFreq(f.id)}
+              style={{flex:1,padding:'8px 0',borderRadius:8,fontSize:12,fontWeight:500,cursor:'pointer',
+                background:freq===f.id?'var(--blue)':'var(--bg2)',color:freq===f.id?'#fff':'var(--text2)',border:'none'}}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:8}}>Asignación por {freqInfo.label.toLowerCase()}</label>
         <div className="flex gap-2" style={{marginBottom:10}}>
-          {([['%', '% del ingreso'], ['$', '$ fijo / sem']] as const).map(([t, lbl]) => (
+          {([['%', '% del ingreso'], ['$', `$ fijo`]] as const).map(([t, lbl]) => (
             <button key={t} onClick={() => setAllocType(t)}
-              style={{flex:1,padding:'9px 0',borderRadius:8,fontSize:13,fontWeight:500,cursor:'pointer',background:allocType===t?'var(--blue)':'var(--bg2)',color:allocType===t?'#fff':'var(--text2)',border:'none'}}>
+              style={{flex:1,padding:'9px 0',borderRadius:8,fontSize:13,fontWeight:500,cursor:'pointer',
+                background:allocType===t?'var(--blue)':'var(--bg2)',color:allocType===t?'#fff':'var(--text2)',border:'none'}}>
               {lbl}
             </button>
           ))}
         </div>
         <input type="number" inputMode="decimal" value={allocValue} onChange={e => setAllocValue(e.target.value)}
-          placeholder={allocType === '%' ? 'Ej: 10  →  10% del ingreso' : 'Ej: 150  →  $150/sem'}
+          placeholder={allocType === '%' ? `Ej: 10  →  10% del ingreso` : `Ej: 150`}
           style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:14,marginBottom:6,outline:'none'}}/>
         {val > 0 && weeklyIncome > 0 && (
           <div style={{fontSize:12,color:'var(--blue)',marginBottom:12,paddingLeft:4}}>
-            = {formatAUD(preview)} por semana
+            ≈ {formatAUD(weeklyPreview)}/sem
           </div>
         )}
+
         <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:8}}>Color</label>
         <div className="flex gap-2" style={{marginBottom:18}}>
-          {COLORS.map(c => <button key={c} onClick={() => setColor(c)} style={{width:26,height:26,borderRadius:'50%',background:c,border:color===c?'2.5px solid var(--text1)':'2px solid transparent',cursor:'pointer'}}/>)}
+          {COLORS.map(c => (
+            <button key={c} onClick={() => setColor(c)}
+              style={{width:26,height:26,borderRadius:'50%',background:c,border:color===c?'2.5px solid var(--text1)':'2px solid transparent',cursor:'pointer'}}/>
+          ))}
         </div>
-        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Meta (opcional)</label>
-        <input type="number" inputMode="decimal" value={targetAmount} onChange={e => setTargetAmount(e.target.value)} placeholder="Ej: 1500  →  Meta total"
-          style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:14,marginBottom:12,outline:'none'}}/>
+
+        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Meta total (opcional)</label>
+        <input type="number" inputMode="decimal" value={targetAmount} onChange={e => setTargetAmount(e.target.value)}
+          placeholder="Ej: 1500"
+          style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:14,marginBottom:16,outline:'none'}}/>
+
         <button onClick={save} disabled={saving||!name||!allocValue}
           style={{width:'100%',padding:13,borderRadius:10,background:'var(--blue)',color:'#fff',fontSize:14,fontWeight:500,border:'none',cursor:'pointer',opacity:(!name||!allocValue||saving)?.5:1}}>
-          {saving ? 'Guardando…' : 'Crear sobre'}
+          {saving ? 'Guardando…' : initial ? 'Guardar cambios' : 'Crear sobre'}
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD, weeklyEquivalent, FREQ_LABELS, DOW_LABELS } from '@/lib/types'
 import type { IncomeSource, Frequency } from '@/lib/types'
@@ -32,6 +32,18 @@ export default function IngresosPage() {
   const [payDate, setPayDate] = useState(localToday)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [undoItem, setUndoItem] = useState<{ label: string; restore: () => Promise<void> } | null>(null)
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function scheduleUndo(label: string, restore: () => Promise<void>) {
+    setUndoItem({ label, restore })
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(() => setUndoItem(null), 5000)
+  }
+  async function handleUndo() {
+    if (!undoItem) return
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    await undoItem.restore(); setUndoItem(null)
+  }
 
   const today = localToday()
   const wkStart = weekStart()
@@ -165,7 +177,7 @@ export default function IngresosPage() {
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDay(e.received_at)}</div>
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--green)', whiteSpace: 'nowrap' }}>+{formatAUD(e.amount)}</span>
-                  <button onClick={() => deleteIncomeEntry(e.id)}
+                  <button onClick={() => { const snap = e; const snapSrc = src; deleteIncomeEntry(snap.id); scheduleUndo(`Ingreso eliminado`, async () => { await registerPayment(snapSrc?.id ?? null, snap.amount, snap.received_at, snap.note ?? undefined) }) }}
                     style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
                 </div>
               )

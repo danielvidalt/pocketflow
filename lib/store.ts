@@ -29,10 +29,12 @@ interface State {
   addRecurringExpense:(d:Omit<RecurringExpense,'id'|'user_id'|'created_at'>)=>Promise<void>
   deleteRecurringExpense:(id:string)=>Promise<void>
   addSavingsGoal:(d:Omit<SavingsGoal,'id'|'user_id'>)=>Promise<void>
+  updateSavingsGoal:(id:string,d:Partial<Omit<SavingsGoal,'id'|'user_id'>>)=>Promise<void>
   deleteSavingsGoal:(id:string)=>Promise<void>
   addToSavings:(id:string,amount:number,date?:string)=>Promise<void>
   addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string,expenseId?:string)=>Promise<void>
   deleteFixedAllocation:(id:string)=>Promise<void>
+  updateRecurringExpense:(id:string,d:Partial<Omit<RecurringExpense,'id'|'user_id'|'created_at'>>)=>Promise<void>
   weeklyIncome:()=>number; weeklyFixedCosts:()=>number; todayExpenses:()=>Expense[]; weekExpenses:()=>Expense[]
 }
 
@@ -118,7 +120,10 @@ export const usePocketFlow = create<State>((set,get) => ({
   deleteExpense: async (id) => {
     const { error } = await getClient().from('expenses').delete().eq('id',id)
     if (error) throw new Error(error.message)
-    set(s=>({expenses:s.expenses.filter(e=>e.id!==id)}))
+    set(s=>({
+      expenses: s.expenses.filter(e=>e.id!==id),
+      fixedExpenseAllocations: s.fixedExpenseAllocations.filter(a=>a.expense_id!==id),
+    }))
   },
 
   deleteExpensesByDate: async (date) => {
@@ -180,11 +185,23 @@ export const usePocketFlow = create<State>((set,get) => ({
     set(s=>({recurringExpenses:s.recurringExpenses.filter(e=>e.id!==id), fixedExpenseAllocations:s.fixedExpenseAllocations.filter(a=>a.recurring_expense_id!==id)}))
   },
 
+  updateRecurringExpense: async (id, data) => {
+    const { error } = await getClient().from('recurring_expenses').update(data).eq('id',id)
+    if (error) throw new Error(error.message)
+    set(s=>({recurringExpenses:s.recurringExpenses.map(e=>e.id===id?{...e,...data}:e)}))
+  },
+
   addSavingsGoal: async (data) => {
     const user = await getUser(); const db = getClient()
     const { data:row, error } = await db.from('savings_goals').insert({...data,user_id:user.id}).select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({savingsGoals:[...s.savingsGoals,row]}))
+  },
+
+  updateSavingsGoal: async (id, data) => {
+    const { error } = await getClient().from('savings_goals').update(data).eq('id',id)
+    if (error) throw new Error(error.message)
+    set(s=>({savingsGoals:s.savingsGoals.map(g=>g.id===id?{...g,...data}:g)}))
   },
 
   deleteSavingsGoal: async (id) => {
