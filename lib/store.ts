@@ -2,6 +2,14 @@ import { create } from 'zustand'
 import { getClient } from './supabase'
 import type { IncomeSource, IncomeEntry, Expense, DebtPocket, SavingsGoal, RecurringExpense } from './types'
 import { weeklyEquivalent, weeklyExpenseEquivalent } from './types'
+
+// Categorías que el CHECK constraint de la DB acepta actualmente.
+// Si agregas una nueva categoría en types.ts también debes correr la migración en Supabase.
+const DB_VALID_CATEGORIES = new Set([
+  'food','transport','leisure','shopping','health','housing','subscriptions','other',
+  'supermarket', // incluido después de correr migration_add_supermarket_category.sql
+])
+
 interface State {
   incomeSources:IncomeSource[]; incomeEntries:IncomeEntry[]; expenses:Expense[]
   recurringExpenses:RecurringExpense[]
@@ -19,6 +27,7 @@ interface State {
   addToSavings:(id:string,amount:number)=>Promise<void>
   weeklyIncome:()=>number; weeklyFixedCosts:()=>number; todayExpenses:()=>Expense[]; weekExpenses:()=>Expense[]
 }
+
 function getWeekRange() {
   const now=new Date(); const day=now.getDay()
   const diff=(day===0?-6:1)-day
@@ -26,73 +35,118 @@ function getWeekRange() {
   const sun=new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999)
   return {mon,sun}
 }
+
+async function getUser() {
+  const db = getClient()
+  const { data: { user }, error } = await db.auth.getUser()
+  if (error || !user) throw new Error('Sesión expirada. Por favor recargá la app.')
+  return user
+}
+
 export const usePocketFlow = create<State>((set,get) => ({
   incomeSources:[], incomeEntries:[], expenses:[], recurringExpenses:[], debtPockets:[], savingsGoals:[], loading:false, exchangeRates:{},
+
   fetchAll: async () => {
     set({loading:true}); const db=getClient()
     const [s,e,ex,r,d,g] = await Promise.all([
       db.from('income_sources').select('*').order('created_at'),
-      db.from('income_entries').select('*').order('received_at',{ascending:false}).limit(200),
-      db.from('expenses').select('*').order('expense_date',{ascending:false}).limit(200),
+      db.from('income_entries').select('*').order('received_at',{ascending:false}).limit(500),
+      db.from('expenses').select('*').order('expense_date',{ascending:false}).limit(500),
       db.from('recurring_expenses').select('*').order('created_at'),
       db.from('debt_pockets').select('*').order('created_at'),
       db.from('savings_goals').select('*').order('created_at'),
     ])
-    set({incomeSources:s.data||[],incomeEntries:e.data||[],expenses:ex.data||[],recurringExpenses:r.data||[],debtPockets:d.data||[],savingsGoals:g.data||[],loading:false})
+    set({
+      incomeSources:s.data||[], incomeEntries:e.data||[], expenses:ex.data||[],
+      recurringExpenses:r.data||[], debtPockets:d.data||[], savingsGoals:g.data||[],
+      loading:false,
+    })
   },
+
   fetchExchangeRates: async () => {
-    try { const r=await fetch('https://api.frankfurter.app/latest?from=AUD&to=COP,USD,EUR'); const d=await r.json(); set({exchangeRates:d.rates||{}}) } catch {}
+    try {
+      const r=await fetch('https://api.frankfurter.app/latest?from=AUD&to=COP,USD,EUR')
+      const d=await r.json(); set({exchangeRates:d.rates||{}})
+    } catch {}
   },
+
   addIncomeSource: async (data) => {
-    const db=getClient(); const {data:{user}}=await db.auth.getUser(); if(!user)return
-    const {data:row}=await db.from('income_sources').insert({...data,user_id:user.id}).select().single()
-    if(row) set(s=>({incomeSources:[...s.incomeSources,row]}))
+    const user = await getUser(); const db = getClient()
+    const { data:row, error } = await db.from('income_sources').insert({...data,user_id:user.id}).select().single()
+    if (error) throw new Error(error.message)
+    if (row) set(s=>({incomeSources:[...s.incomeSources,row]}))
   },
+
   deleteIncomeSource: async (id) => {
-    await getClient().from('income_sources').delete().eq('id',id)
+    const { error } = await getClient().from('income_sources').delete().eq('id',id)
+    if (error) throw new Error(error.message)
     set(s=>({incomeSources:s.incomeSources.filter(x=>x.id!==id)}))
   },
+
   registerPayment: async (sourceId,amount,date,note) => {
-    const db=getClient(); const {data:{user}}=await db.auth.getUser(); if(!user)throw new Error('No autenticado')
-    const d=new Date(); const received_at=date||`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-    const {data:row,error}=await db.from('income_entries').insert({user_id:user.id,source_id:sourceId,amount,received_at,note:note||null}).select().single()
-    if(error) throw new Error(error.message)
-    if(row) set(s=>({incomeEntries:[row,...s.incomeEntries]}))
+    const user = await getUser(); const db = getClient()
+    const d=new Date()
+    const received_at=date||`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const { data:row, error } = await db.from('income_entries')
+      .insert({user_id:user.id,source_id:sourceId,amount,received_at,note:note||null})
+      .select().single()
+    if (error) throw new Error(error.message)
+    if (row) set(s=>({incomeEntries:[row,...s.incomeEntries]}))
   },
+
   addExpense: async (data) => {
-    const db=getClient(); const {data:{user}}=await db.auth.getUser(); if(!user)return
-    const {data:row}=await db.from('expenses').insert({...data,user_id:user.id}).select().single()
-    if(row) set(s=>({expenses:[row,...s.expenses]}))
+    const user = await getUser(); const db = getClient()
+    // Usa 'other' si la categoría no está en el constraint actual de la DB
+    const category = DB_VALID_CATEGORIES.has(data.category) ? data.category : 'other'
+    const { data:row, error } = await db.from('expenses')
+      .insert({...data, category, user_id:user.id})
+      .select().single()
+    if (error) throw new Error(error.message)
+    if (row) set(s=>({expenses:[row,...s.expenses]}))
   },
+
   deleteExpense: async (id) => {
-    await getClient().from('expenses').delete().eq('id',id)
+    const { error } = await getClient().from('expenses').delete().eq('id',id)
+    if (error) throw new Error(error.message)
     set(s=>({expenses:s.expenses.filter(e=>e.id!==id)}))
   },
+
   addRecurringExpense: async (data) => {
-    const db=getClient(); const {data:{user}}=await db.auth.getUser(); if(!user)return
-    const {data:row}=await db.from('recurring_expenses').insert({...data,user_id:user.id}).select().single()
-    if(row) set(s=>({recurringExpenses:[...s.recurringExpenses,row]}))
+    const user = await getUser(); const db = getClient()
+    const { data:row, error } = await db.from('recurring_expenses').insert({...data,user_id:user.id}).select().single()
+    if (error) throw new Error(error.message)
+    if (row) set(s=>({recurringExpenses:[...s.recurringExpenses,row]}))
   },
+
   deleteRecurringExpense: async (id) => {
-    await getClient().from('recurring_expenses').delete().eq('id',id)
+    const { error } = await getClient().from('recurring_expenses').delete().eq('id',id)
+    if (error) throw new Error(error.message)
     set(s=>({recurringExpenses:s.recurringExpenses.filter(e=>e.id!==id)}))
   },
+
   addSavingsGoal: async (data) => {
-    const db=getClient(); const {data:{user}}=await db.auth.getUser(); if(!user)return
-    const {data:row}=await db.from('savings_goals').insert({...data,user_id:user.id}).select().single()
-    if(row) set(s=>({savingsGoals:[...s.savingsGoals,row]}))
+    const user = await getUser(); const db = getClient()
+    const { data:row, error } = await db.from('savings_goals').insert({...data,user_id:user.id}).select().single()
+    if (error) throw new Error(error.message)
+    if (row) set(s=>({savingsGoals:[...s.savingsGoals,row]}))
   },
+
   deleteSavingsGoal: async (id) => {
-    await getClient().from('savings_goals').delete().eq('id',id)
+    const { error } = await getClient().from('savings_goals').delete().eq('id',id)
+    if (error) throw new Error(error.message)
     set(s=>({savingsGoals:s.savingsGoals.filter(g=>g.id!==id)}))
   },
+
   addToSavings: async (id,amount) => {
-    const db=getClient()
-    const goal=get().savingsGoals.find(g=>g.id===id); if(!goal)return
-    const newAmt=goal.current_amount+amount
-    await db.from('savings_goals').update({current_amount:newAmt}).eq('id',id)
+    const db = getClient()
+    const goal = get().savingsGoals.find(g=>g.id===id)
+    if (!goal) return
+    const newAmt = goal.current_amount + amount
+    const { error } = await db.from('savings_goals').update({current_amount:newAmt}).eq('id',id)
+    if (error) throw new Error(error.message)
     set(s=>({savingsGoals:s.savingsGoals.map(g=>g.id===id?{...g,current_amount:newAmt}:g)}))
   },
+
   weeklyIncome: ()=>get().incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0),
   weeklyFixedCosts: ()=>get().recurringExpenses.filter(e=>e.is_active).reduce((sum,e)=>sum+weeklyExpenseEquivalent(e),0),
   todayExpenses: ()=>{ const t=new Date().toISOString().split('T')[0]; return get().expenses.filter(e=>e.expense_date===t) },

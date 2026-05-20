@@ -40,6 +40,7 @@ export default function GastosPage() {
   const [note, setNote] = useState('')
   const [selCat, setSelCat] = useState<ExpenseCategory>('food')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string|null>(null)
   const [expDate, setExpDate] = useState(localToday)
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => { if (tab === 'daily') ref.current?.focus() }, [tab])
@@ -97,10 +98,13 @@ export default function GastosPage() {
   )
 
   async function save() {
-    const amt = parseFloat(amount); if (!amt || amt <= 0) return; setSaving(true)
+    const amt = parseFloat(amount); if (!amt || amt <= 0) return
+    setSaving(true); setSaveError(null)
     try {
       await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
       setAmount(''); setNote(''); setSelCat('food')
+    } catch (e: any) {
+      setSaveError(e?.message || 'Error al guardar. Intentá de nuevo.')
     } finally {
       setSaving(false); ref.current?.focus()
     }
@@ -112,6 +116,7 @@ export default function GastosPage() {
   const [fCat, setFCat] = useState<ExpenseCategory>('other')
   const [fFreq, setFFreq] = useState<'weekly' | 'fortnightly' | 'monthly'>('monthly')
   const [fSaving, setFSaving] = useState(false)
+  const [fSaveError, setFSaveError] = useState<string|null>(null)
   const [fDate, setFDate] = useState(localToday)
   const fRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (tab === 'fixed') fRef.current?.focus() }, [tab])
@@ -119,9 +124,16 @@ export default function GastosPage() {
   const activeFixed = recurringExpenses.filter(e => e.is_active)
 
   async function saveFixed() {
-    const amt = parseFloat(fAmount); if (!amt || amt <= 0) return; setFSaving(true)
-    await addRecurringExpense({ name: encFixed(fName.trim() || CAT_LABELS[fCat], fDate), amount: amt, category: fCat, frequency: fFreq, is_active: true })
-    setFAmount(''); setFName(''); setFCat('other'); setFFreq('monthly'); setFDate(localToday()); setFSaving(false); fRef.current?.focus()
+    const amt = parseFloat(fAmount); if (!amt || amt <= 0) return
+    setFSaving(true); setFSaveError(null)
+    try {
+      await addRecurringExpense({ name: encFixed(fName.trim() || CAT_LABELS[fCat], fDate), amount: amt, category: fCat, frequency: fFreq, is_active: true })
+      setFAmount(''); setFName(''); setFCat('other'); setFFreq('monthly'); setFDate(localToday())
+    } catch (e: any) {
+      setFSaveError(e?.message || 'Error al guardar. Intentá de nuevo.')
+    } finally {
+      setFSaving(false); fRef.current?.focus()
+    }
   }
 
   return (<>
@@ -173,6 +185,11 @@ export default function GastosPage() {
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </div>
         </div>
+        {saveError && (
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>
+            ⚠️ {saveError}
+          </div>
+        )}
         <button onClick={save} disabled={saving || !amount} style={{ width: '100%', padding: '12px 0', borderRadius: 'var(--radius-sm)', background: 'var(--blue)', color: '#fff', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer', opacity: (!amount || saving) ? .5 : 1 }}>
           {saving ? 'Guardando…' : 'Guardar gasto'}
         </button>
@@ -266,6 +283,11 @@ export default function GastosPage() {
               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
           </div>
         </div>
+        {fSaveError && (
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>
+            ⚠️ {fSaveError}
+          </div>
+        )}
         <button onClick={saveFixed} disabled={fSaving || !fAmount} style={{ width: '100%', padding: '12px 0', borderRadius: 'var(--radius-sm)', background: 'var(--blue)', color: '#fff', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer', opacity: (!fAmount || fSaving) ? .5 : 1 }}>
           {fSaving ? 'Guardando…' : 'Agregar gasto fijo'}
         </button>
