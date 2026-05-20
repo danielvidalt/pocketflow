@@ -199,7 +199,7 @@ export default function GastosPage() {
       </div>
 
       {/* Historial */}
-      <div className="scroll-area" style={{ padding: '0 16px 16px' }}>
+      <div className="scroll-area" style={{ paddingLeft: 16, paddingRight: 16 }}>
         {/* Gastos — todos, sin límite de días */}
         {expGroups.length === 0 && <EmptyState message="Sin gastos registrados" />}
         {expGroups.map(({ label, items }) => {
@@ -255,7 +255,7 @@ export default function GastosPage() {
         <MetricCard label="Costo semanal" value={formatAUD(weeklyFixed)} valueColor="var(--red)" />
         <MetricCard label="Costo mensual" value={formatAUD(weeklyFixed * 4.33)} valueColor="var(--text2)" />
       </div>
-      <div className="scroll-area" style={{ padding: '12px 16px 16px' }}>
+      <div className="scroll-area" style={{ paddingTop: 12, paddingLeft: 16, paddingRight: 16 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
           <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Sobres de gasto fijo</span>
           <button onClick={() => setShowNewFixed(true)} style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg2)', border: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

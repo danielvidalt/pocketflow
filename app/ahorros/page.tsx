@@ -48,7 +48,7 @@ export default function AhorrosPage() {
   return (<>
     <SectionHeader title="Sobres de Ahorro" subtitle={`Total guardado: ${formatAUD(totalSaved)}`}
       action={<button onClick={() => setShowNew(true)} style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><Plus size={18} color="var(--text2)" strokeWidth={1.7}/></button>}/>
-    <div className="scroll-area" style={{padding:16}}>
+    <div className="scroll-area" style={{paddingTop:16,paddingLeft:16,paddingRight:16}}>
       {savingsGoals.length === 0 && <EmptyState message="Tocá + para crear tu primer sobre de ahorro"/>}
       {savingsGoals.map(g => {
         const { name, type, value } = decEnv(g.name)

@@ -65,7 +65,7 @@ export default function IngresosPage() {
     <SectionHeader title="Mis ingresos" subtitle={`${formatAUD(weeklyIncome())} / semana equivalente`}
       action={<button onClick={() => setShowForm(true)} style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--bg2)', border: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} color="var(--text2)" strokeWidth={1.7} /></button>} />
 
-    <div className="scroll-area" style={{ padding: 16 }}>
+    <div className="scroll-area" style={{ paddingTop: 16, paddingLeft: 16, paddingRight: 16 }}>
       {error && (
         <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13 }}>
           {error} <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', float: 'right', fontSize: 16 }}>×</button>
