@@ -196,7 +196,7 @@ export default function HomePage(){
           </div>
           <div style={{fontSize:11,color:'var(--text3)',marginBottom:20,paddingLeft:4}}>
             {settings.fortnightDir==='next'
-              ?`Muestra desde hoy (${format(wkStart,"d MMM",{locale:es})}) hasta el próximo domingo (${format(fnNextEnd,"d MMM",{locale:es})})`
+              ?`Muestra desde el lunes de esta semana (${format(wkStart,"d MMM",{locale:es})}) hasta el domingo de la semana que viene (${format(fnNextEnd,"d MMM",{locale:es})})`
               :`Muestra desde el lunes pasado (${format(fnPrevStart,"d MMM",{locale:es})}) hasta el domingo de esta semana (${format(wkEnd,"d MMM",{locale:es})})`}
           </div>
 
