@@ -19,7 +19,7 @@ interface State {
   addIncomeSource:(d:Omit<IncomeSource,'id'|'user_id'|'created_at'>)=>Promise<void>
   deleteIncomeSource:(id:string)=>Promise<void>
   registerPayment:(sourceId:string|null,amount:number,date?:string,note?:string)=>Promise<void>
-  addExpense:(d:Omit<Expense,'id'|'user_id'|'created_at'>)=>Promise<void>
+  addExpense:(d:Omit<Expense,'id'|'user_id'|'created_at'>)=>Promise<Expense>
   deleteExpense:(id:string)=>Promise<void>
   deleteExpensesByDate:(date:string)=>Promise<void>
   deleteAllData:()=>Promise<void>
@@ -31,7 +31,7 @@ interface State {
   addSavingsGoal:(d:Omit<SavingsGoal,'id'|'user_id'>)=>Promise<void>
   deleteSavingsGoal:(id:string)=>Promise<void>
   addToSavings:(id:string,amount:number,date?:string)=>Promise<void>
-  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string)=>Promise<void>
+  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string,expenseId?:string)=>Promise<void>
   deleteFixedAllocation:(id:string)=>Promise<void>
   weeklyIncome:()=>number; weeklyFixedCosts:()=>number; todayExpenses:()=>Expense[]; weekExpenses:()=>Expense[]
 }
@@ -112,6 +112,7 @@ export const usePocketFlow = create<State>((set,get) => ({
       .select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({expenses:[row,...s.expenses]}))
+    return row as Expense
   },
 
   deleteExpense: async (id) => {
@@ -213,11 +214,11 @@ export const usePocketFlow = create<State>((set,get) => ({
     }))
   },
 
-  addFixedAllocation: async (recurringExpenseId, amount, date?) => {
+  addFixedAllocation: async (recurringExpenseId, amount, date?, expenseId?) => {
     const user = await getUser(); const db = getClient()
     const allocated_at = date || format(new Date(), 'yyyy-MM-dd')
     const { data:row, error } = await db.from('fixed_expense_allocations')
-      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at})
+      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at, expense_id: expenseId || null})
       .select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({fixedExpenseAllocations:[row,...s.fixedExpenseAllocations]}))
@@ -249,7 +250,7 @@ export const usePocketFlow = create<State>((set,get) => ({
         end = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd')
       }
       const allocated = fixedExpenseAllocations
-        .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= start && a.allocated_at <= end)
+        .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= start && a.allocated_at <= end && !a.expense_id)
         .reduce((s, a) => s + a.amount, 0)
       return sum + allocated / FREQ_DIVISORS[e.frequency]
     }, 0)

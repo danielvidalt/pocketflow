@@ -2,7 +2,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory, FREQ_LABELS } from '@/lib/types'
-import type { RecurringExpense } from '@/lib/types'
+import type { RecurringExpense, Expense } from '@/lib/types'
 import { MetricCard, SectionHeader, EmptyState, ProgressBar } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { parseISO, format, subDays } from 'date-fns'
@@ -65,6 +65,11 @@ export default function GastosPage() {
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => { if (tab === 'daily') ref.current?.focus() }, [tab])
 
+  // Modal de asignación a sobre (aparece tras guardar un gasto diario)
+  const [justSavedExpense, setJustSavedExpense] = useState<Expense | null>(null)
+  const [assignSaving, setAssignSaving] = useState(false)
+  const activeFixed = recurringExpenses.filter(e => e.is_active)
+
   // Hora LOCAL siempre, evita que gastos "se sumen pero no aparezcan"
   const today = localToday()
   const todayTotal = useMemo(() =>
@@ -121,8 +126,9 @@ export default function GastosPage() {
     const amt = parseFloat(amount); if (!amt || amt <= 0) return
     setSaving(true); setSaveError(null)
     try {
-      await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
+      const expense = await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
       setAmount(''); setNote(''); setSelCat('food')
+      if (activeFixed.length > 0) setJustSavedExpense(expense)
     } catch (e: any) {
       setSaveError(e?.message || 'Error al guardar. Intentá de nuevo.')
     } finally {
@@ -137,7 +143,6 @@ export default function GastosPage() {
   const [fixedAddDate, setFixedAddDate] = useState(today)
   const [fixedSaving, setFixedSaving] = useState(false)
   const weeklyFixed = weeklyFixedCosts()
-  const activeFixed = recurringExpenses.filter(e => e.is_active)
 
   return (<>
     <SectionHeader title="Gastos" subtitle={format(new Date(), "EEEE d 'de' MMMM", { locale: es })} />
@@ -271,11 +276,12 @@ export default function GastosPage() {
             .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
             .sort((a, b) => b.allocated_at.localeCompare(a.allocated_at))
           const allocated = entries.reduce((s, a) => s + a.amount, 0)
-          const pct = Math.min(100, e.amount > 0 ? (allocated / e.amount) * 100 : 0)
+          const pct = e.amount > 0 ? (allocated / e.amount) * 100 : 0
+          const isOver = e.amount > 0 && allocated > e.amount
           const funded = pct >= 100
 
           return (
-            <div key={e.id} className="card" style={{ marginBottom: 10, borderLeft: `3px solid ${color}` }}>
+            <div key={e.id} className="card" style={{ marginBottom: 10, borderLeft: `3px solid ${isOver ? 'var(--red)' : color}` }}>
               <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
                 <div className="flex items-center gap-2">
                   <span style={{ fontSize: 16 }}>{ICONS[e.category]}</span>
@@ -284,27 +290,35 @@ export default function GastosPage() {
                 <button onClick={() => deleteRecurringExpense(e.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X size={14} /></button>
               </div>
               <div className="flex items-baseline gap-2" style={{ marginBottom: 2 }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text1)' }}>{formatAUD(allocated)}</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: isOver ? 'var(--red)' : 'var(--text1)' }}>{formatAUD(allocated)}</div>
                 <div style={{ fontSize: 13, color: 'var(--text3)' }}>de {formatAUD(e.amount)}</div>
               </div>
-              <div style={{ fontSize: 11, color: funded ? 'var(--green)' : 'var(--text3)', marginBottom: 8, fontWeight: funded ? 600 : 400 }}>
-                {FREQ_LABELS[e.frequency]} · {funded ? '✓ Completado' : `Faltan ${formatAUD(e.amount - allocated)}`}
+              <div style={{ fontSize: 11, marginBottom: 8, fontWeight: (funded || isOver) ? 600 : 400, color: isOver ? 'var(--red)' : funded ? 'var(--green)' : 'var(--text3)' }}>
+                {FREQ_LABELS[e.frequency]} · {isOver ? `Excede ${formatAUD(allocated - e.amount)}` : funded ? '✓ Completado' : `Faltan ${formatAUD(e.amount - allocated)}`}
               </div>
-              <ProgressBar percent={pct} color={funded ? 'var(--green)' : color} height={8} />
+              <ProgressBar percent={Math.min(100, pct)} color={isOver ? 'var(--red)' : funded ? 'var(--green)' : color} height={8} />
 
               {entries.length > 0 && (
                 <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid var(--border)' }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Este período</span>
-                  {entries.map(a => (
+                  {entries.map(a => {
+                    const linkedExp = a.expense_id ? expenses.find(ex => ex.id === a.expense_id) : null
+                    return (
                     <div key={a.id} className="flex items-center gap-2 py-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDay(a.allocated_at)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {linkedExp ? linkedExp.name : fmtDay(a.allocated_at)}
+                        </div>
+                        {linkedExp && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmtDay(a.allocated_at)}</div>}
                       </div>
-                      <span style={{ fontSize: 13, fontWeight: 500, color, whiteSpace: 'nowrap' }}>+{formatAUD(a.amount)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: linkedExp ? 'var(--text2)' : color, whiteSpace: 'nowrap' }}>
+                        {linkedExp ? '' : '+'}{formatAUD(a.amount)}
+                      </span>
                       <button onClick={() => deleteFixedAllocation(a.id)}
                         style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -351,6 +365,49 @@ export default function GastosPage() {
       </div>
       {showNewFixed && <NewFixedModal onClose={() => setShowNewFixed(false)} onSave={addRecurringExpense} />}
     </>}
+
+    {/* Modal: asignar gasto diario a un sobre */}
+    {justSavedExpense && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
+        <div className="slide-up" style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: 20 }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text1)' }}>¿Asignar a un sobre?</span>
+            <button onClick={() => setJustSavedExpense(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text3)" /></button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+            {justSavedExpense.name} · {formatAUD(justSavedExpense.amount)}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+            {activeFixed.map(env => {
+              const { name: envName } = decFixed(env.name)
+              const envColor = CAT_COLORS[env.category]
+              const period = periodRange(env.frequency)
+              const envAllocated = fixedExpenseAllocations
+                .filter(a => a.recurring_expense_id === env.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
+                .reduce((s, a) => s + a.amount, 0)
+              return (
+                <button key={env.id} disabled={assignSaving} onClick={async () => {
+                  setAssignSaving(true)
+                  await addFixedAllocation(env.id, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id)
+                  setAssignSaving(false); setJustSavedExpense(null)
+                }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, background: 'var(--bg2)', border: `1.5px solid ${envColor}44`, cursor: 'pointer', textAlign: 'left', opacity: assignSaving ? .6 : 1 }}>
+                  <span style={{ fontSize: 20 }}>{ICONS[env.category]}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{envName}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{FREQ_LABELS[env.frequency]} · {formatAUD(envAllocated)} de {formatAUD(env.amount)}</div>
+                  </div>
+                  <span style={{ fontSize: 12, color: envColor, fontWeight: 600, flexShrink: 0 }}>Asignar</span>
+                </button>
+              )
+            })}
+          </div>
+          <button onClick={() => setJustSavedExpense(null)}
+            style={{ width: '100%', marginTop: 12, padding: '11px 0', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>
+            No asignar
+          </button>
+        </div>
+      </div>
+    )}
     <BottomNav />
   </>)
 }
