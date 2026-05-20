@@ -8,13 +8,26 @@ import { formatAUD, weeklyEquivalent } from '@/lib/types'
 import { PillTag, BtnGhost, SectionHeader } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { getClient } from '@/lib/supabase'
-import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval, subWeeks, addWeeks, startOfMonth, endOfMonth } from 'date-fns'
+import { format, isToday, parseISO, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { getSettings, saveSettings } from '@/lib/settings'
 import type { AppSettings } from '@/lib/settings'
 
 type Period = 'week' | 'fortnight' | 'month'
-const DEFAULTS: AppSettings = { fortnightDir: 'next', showMonth: false }
+const DEFAULTS: AppSettings = { fortnightDir: 'next', showMonth: false, payDayStart: 1 }
+
+// Días en orden Lun→Dom para el selector (convención JS: 0=Dom, 1=Lun, …, 6=Sáb)
+const PAY_DAYS: [number, string][] = [[1,'Lun'],[2,'Mar'],[3,'Mié'],[4,'Jue'],[5,'Vie'],[6,'Sáb'],[0,'Dom']]
+const PAY_DAY_FULL = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+
+function getPayWeekStart(from: Date, startDay: number): Date {
+  const d = new Date(from)
+  let diff = d.getDay() - startDay
+  if (diff < 0) diff += 7
+  d.setDate(d.getDate() - diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
 
 export default function HomePage(){
   const {fetchAll,fetchExchangeRates,incomeSources,incomeEntries,expenses,weeklyFixedCosts}=usePocketFlow()
@@ -47,10 +60,10 @@ export default function HomePage(){
   }
 
   const now=new Date()
-  const wkStart=startOfWeek(now,{weekStartsOn:1})
-  const wkEnd=endOfWeek(now,{weekStartsOn:1})
-  const fnPrevStart=startOfWeek(subWeeks(now,1),{weekStartsOn:1})
-  const fnNextEnd=endOfWeek(addWeeks(now,1),{weekStartsOn:1})
+  const wkStart=getPayWeekStart(now, settings.payDayStart)
+  const wkEnd=new Date(wkStart); wkEnd.setDate(wkStart.getDate()+6); wkEnd.setHours(23,59,59,999)
+  const fnPrevStart=new Date(wkStart); fnPrevStart.setDate(wkStart.getDate()-7)
+  const fnNextEnd=new Date(wkStart); fnNextEnd.setDate(wkStart.getDate()+13); fnNextEnd.setHours(23,59,59,999)
   const mthStart=startOfMonth(now)
   const mthEnd=endOfMonth(now)
 
@@ -191,8 +204,27 @@ export default function HomePage(){
           </div>
           <div style={{fontSize:11,color:'var(--text3)',marginBottom:20,paddingLeft:4}}>
             {settings.fortnightDir==='next'
-              ?`Muestra desde el lunes de esta semana (${format(wkStart,"d MMM",{locale:es})}) hasta el domingo de la semana que viene (${format(fnNextEnd,"d MMM",{locale:es})})`
-              :`Muestra desde el lunes pasado (${format(fnPrevStart,"d MMM",{locale:es})}) hasta el domingo de esta semana (${format(wkEnd,"d MMM",{locale:es})})`}
+              ?`Del ${format(wkStart,"d MMM",{locale:es})} al ${format(fnNextEnd,"d MMM",{locale:es})}`
+              :`Del ${format(fnPrevStart,"d MMM",{locale:es})} al ${format(wkEnd,"d MMM",{locale:es})}`}
+          </div>
+
+          <div style={{paddingTop:16,borderTop:'0.5px solid var(--border)',marginBottom:20}}>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Inicio de semana</div>
+            <div style={{display:'flex',gap:4}}>
+              {PAY_DAYS.map(([day,lbl])=>{
+                const on=settings.payDayStart===day
+                return(
+                  <button key={day} onClick={()=>updateSetting('payDayStart',day)}
+                    style={{flex:1,padding:'7px 0',borderRadius:6,fontSize:11,fontWeight:500,border:'none',cursor:'pointer',
+                      background:on?'var(--blue)':'var(--bg2)',color:on?'#fff':'var(--text2)'}}>
+                    {lbl}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:6,paddingLeft:4}}>
+              {`Tu semana va del ${PAY_DAY_FULL[settings.payDayStart].toLowerCase()} al ${PAY_DAY_FULL[(settings.payDayStart+6)%7].toLowerCase()}`}
+            </div>
           </div>
 
           <div className="flex items-center justify-between" style={{paddingTop:16,borderTop:'0.5px solid var(--border)'}}>
