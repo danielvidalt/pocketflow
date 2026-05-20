@@ -36,6 +36,9 @@ export default function HomePage(){
   const weekEntries=useMemo(()=>incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),{start:wkStart,end:wkEnd})),[incomeEntries])
   const collectedThisWeek=weekEntries.reduce((s,e)=>s+e.amount,0)
   const collectedPct=weeklyTotal>0?(collectedThisWeek/weeklyTotal)*100:0
+  const weekExps=useMemo(()=>expenses.filter(e=>isWithinInterval(parseISO(e.expense_date),{start:wkStart,end:wkEnd})),[expenses])
+  const weekSpent=weekExps.reduce((s,e)=>s+e.amount,0)
+  const weekRemaining=collectedThisWeek-weekSpent
   const todayExps=useMemo(()=>expenses.filter(e=>isToday(parseISO(e.expense_date))),[expenses])
   const todayTotal=todayExps.reduce((s,e)=>s+e.amount,0)
   const weekSources=useMemo(()=>incomeSources.filter(s=>s.is_active&&s.frequency!=='once'),[incomeSources])
@@ -52,15 +55,19 @@ export default function HomePage(){
       }/>
     <div className="scroll-area" style={{padding:16}}>
       <div style={{background:'var(--blue)',borderRadius:'var(--radius)',padding:18,marginBottom:10}}>
-        <div style={{fontSize:11,color:'rgba(255,255,255,.7)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:4}}>Disponible esta semana</div>
-        <div style={{fontSize:40,fontWeight:700,color:'#fff',letterSpacing:-1,lineHeight:1}}>{formatAUD(weeklyTotal)}</div>
-        <div style={{fontSize:12,color:'rgba(255,255,255,.65)',marginTop:6}}>{formatAUD(collectedThisWeek)} cobrado · {formatAUD(weeklyTotal-collectedThisWeek)} por llegar</div>
+        <div style={{fontSize:11,color:'rgba(255,255,255,.7)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:4}}>
+          {weekRemaining>=0?'Te queda esta semana':'Gastaste de más esta semana'}
+        </div>
+        <div style={{fontSize:40,fontWeight:700,color:'#fff',letterSpacing:-1,lineHeight:1}}>{formatAUD(Math.abs(weekRemaining))}</div>
+        <div style={{fontSize:12,color:'rgba(255,255,255,.65)',marginTop:6}}>
+          {formatAUD(collectedThisWeek)} cobrado · {formatAUD(weekSpent)} gastado
+        </div>
         <div style={{height:5,background:'rgba(255,255,255,.2)',borderRadius:3,marginTop:12,overflow:'hidden'}}>
           <div style={{height:'100%',background:'#fff',borderRadius:3,width:`${collectedPct}%`,transition:'width .4s'}}/>
         </div>
         <div className="flex justify-between mt-1">
-          <span style={{fontSize:10,color:'rgba(255,255,255,.6)'}}>{Math.round(collectedPct)}% cobrado</span>
-          <span style={{fontSize:10,color:'rgba(255,255,255,.6)'}}>equiv. semanal</span>
+          <span style={{fontSize:10,color:'rgba(255,255,255,.6)'}}>{Math.round(collectedPct)}% cobrado de {formatAUD(weeklyTotal)}</span>
+          <span style={{fontSize:10,color:'rgba(255,255,255,.6)'}}>{formatAUD(weeklyTotal-collectedThisWeek)} por llegar</span>
         </div>
       </div>
       <div className="card" style={{marginBottom:10}}>

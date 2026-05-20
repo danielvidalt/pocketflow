@@ -6,18 +6,36 @@ import type { IncomeSource, Frequency } from '@/lib/types'
 import { SectionHeader, Divider, BtnPrimary } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { Plus, X } from 'lucide-react'
+import { parseISO, format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 const FQ: Frequency[]=['weekly','fortnightly','monthly','annual']
 const COLORS=['#534AB7','#1D9E75','#BA7517','#D85A30','#185FA5','#993556','#3B6D11']
 
+function fmtDay(dateStr: string) {
+  return format(parseISO(dateStr), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
+}
+
 export default function IngresosPage(){
   const {incomeSources,incomeEntries,registerPayment,addIncomeSource,deleteIncomeSource,weeklyIncome}=usePocketFlow()
+  const today = new Date().toISOString().split('T')[0]
   const [showForm,setShowForm]=useState(false)
+  const [payDate,setPayDate]=useState(today)
+  const [registeringId,setRegisteringId]=useState<string|null>(null)
+
   const recurring=useMemo(()=>incomeSources.filter(s=>s.is_active&&s.frequency!=='once'),[incomeSources])
+
   function paid(srcId:string){
     const ws=new Date(); ws.setDate(ws.getDate()-((ws.getDay()+6)%7)); ws.setHours(0,0,0,0)
     return incomeEntries.some(e=>e.source_id===srcId&&new Date(e.received_at)>=ws)
   }
+
+  async function handleRegister(src: IncomeSource) {
+    await registerPayment(src.id, src.amount, payDate)
+    setRegisteringId(null)
+    setPayDate(today)
+  }
+
   return(<>
     <SectionHeader title="Mis ingresos" subtitle={`${formatAUD(weeklyIncome())} / semana equivalente`}
       action={<button onClick={()=>setShowForm(true)} style={{width:36,height:36,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}><Plus size={18} color="var(--text2)" strokeWidth={1.7}/></button>}/>
@@ -26,6 +44,7 @@ export default function IngresosPage(){
       {recurring.length===0&&<p style={{fontSize:13,color:'var(--text3)',marginBottom:12}}>Tocá + para agregar tu primera fuente</p>}
       {recurring.map(src=>{
         const isPaid=paid(src.id)
+        const isRegistering=registeringId===src.id
         return(<div key={src.id} className="card" style={{marginBottom:10,borderLeft:`3px solid ${src.color}`}}>
           <div className="flex items-center justify-between">
             <span style={{fontSize:14,fontWeight:600,color:'var(--text1)'}}>{src.name}</span>
@@ -39,9 +58,33 @@ export default function IngresosPage(){
           <div style={{fontSize:12,color:'var(--text2)',marginTop:8,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
             {isPaid?<span style={{color:'var(--green)',fontWeight:500}}>✓ Cobrado esta semana</span>:'Pendiente de cobro esta semana'}
           </div>
-          {!isPaid&&<button onClick={()=>registerPayment(src.id,src.amount)} style={{marginTop:10,width:'100%',padding:9,borderRadius:'var(--radius-sm)',background:src.color+'22',color:src.color,fontSize:12,fontWeight:500,border:'none',cursor:'pointer'}}>
-            Registré este cobro — {formatAUD(src.amount)}
-          </button>}
+          {!isPaid&&(
+            isRegistering ? (
+              <div style={{marginTop:10}}>
+                <div style={{fontSize:11,color:'var(--text3)',marginBottom:6}}>¿Cuándo lo recibiste?</div>
+                <div className="flex gap-2 items-center">
+                  <div style={{position:'relative',flex:1}}>
+                    <div style={{fontSize:12,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:8,padding:'8px 12px',whiteSpace:'nowrap',cursor:'pointer',userSelect:'none'}}>
+                      📅 {fmtDay(payDate)}
+                    </div>
+                    <input type="date" value={payDate} max={today} onChange={e=>setPayDate(e.target.value||today)}
+                      style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                  </div>
+                  <button onClick={()=>handleRegister(src)}
+                    style={{padding:'8px 16px',borderRadius:8,background:src.color,color:'#fff',fontSize:12,fontWeight:500,border:'none',cursor:'pointer',whiteSpace:'nowrap'}}>
+                    Confirmar — {formatAUD(src.amount)}
+                  </button>
+                  <button onClick={()=>setRegisteringId(null)}
+                    style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:20,lineHeight:1}}>×</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={()=>setRegisteringId(src.id)}
+                style={{marginTop:10,width:'100%',padding:9,borderRadius:'var(--radius-sm)',background:src.color+'22',color:src.color,fontSize:12,fontWeight:500,border:'none',cursor:'pointer'}}>
+                Registré este cobro — {formatAUD(src.amount)}
+              </button>
+            )
+          )}
         </div>)
       })}
       <Divider margin="6px 0 14px"/>
@@ -53,19 +96,25 @@ export default function IngresosPage(){
         </div>
       </button>
     </div>
-    {showForm&&<Modal onClose={()=>setShowForm(false)} onSave={addIncomeSource}/>}
+    {showForm&&<Modal onClose={()=>setShowForm(false)} onSave={addIncomeSource} onRegister={registerPayment}/>}
     <BottomNav/>
   </>)
 }
 
-function Modal({onClose,onSave}:{onClose:()=>void;onSave:(d:any)=>Promise<void>}){
+function Modal({onClose,onSave,onRegister}:{onClose:()=>void;onSave:(d:any)=>Promise<void>;onRegister:(id:string|null,amt:number,date?:string)=>Promise<void>}){
+  const today = new Date().toISOString().split('T')[0]
   const [name,setName]=useState(''); const [amount,setAmount]=useState('')
   const [freq,setFreq]=useState<Frequency>('weekly'); const [dow,setDow]=useState(0)
   const [color,setColor]=useState(COLORS[0]); const [saving,setSaving]=useState(false)
+  const [incomeDate,setIncomeDate]=useState(today)
+
   async function save(){
     const amt=parseFloat(amount); if(!name.trim()||!amt)return; setSaving(true)
-    await onSave({name:name.trim(),amount:amt,frequency:freq,day_of_week:freq==='once'?null:dow,color,icon:'briefcase',is_active:true}); onClose()
+    await onSave({name:name.trim(),amount:amt,frequency:freq,day_of_week:freq==='once'?null:dow,color,icon:'briefcase',is_active:true})
+    if(freq==='once') await onRegister(null,amt,incomeDate)
+    onClose()
   }
+
   return(<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'flex-end',zIndex:200}}>
     <div className="slide-up" style={{width:'100%',maxWidth:430,margin:'0 auto',background:'var(--bg)',borderRadius:'20px 20px 0 0',padding:20}}>
       <div className="flex items-center justify-between" style={{marginBottom:16}}>
@@ -81,6 +130,16 @@ function Modal({onClose,onSave}:{onClose:()=>void;onSave:(d:any)=>Promise<void>}
         {FQ.map(f=><option key={f} value={f}>{FREQ_LABELS[f]}</option>)}
         <option value="once">Puntual (una vez)</option>
       </select>
+      {freq==='once'&&<>
+        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>¿Cuándo lo recibiste?</label>
+        <div style={{position:'relative',marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:500,color:'var(--blue)',background:'var(--bg2)',borderRadius:8,padding:'10px 12px',cursor:'pointer',userSelect:'none'}}>
+            📅 {formatDate(incomeDate)}
+          </div>
+          <input type="date" value={incomeDate} max={today} onChange={e=>setIncomeDate(e.target.value||today)}
+            style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+        </div>
+      </>}
       {freq!=='once'&&<>
         <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Día de cobro</label>
         <div className="flex gap-1.5 flex-wrap" style={{marginBottom:12}}>
@@ -94,4 +153,8 @@ function Modal({onClose,onSave}:{onClose:()=>void;onSave:(d:any)=>Promise<void>}
       <BtnPrimary onClick={save} disabled={saving||!name||!amount}>{saving?'Guardando…':'Agregar fuente'}</BtnPrimary>
     </div>
   </div>)
+}
+
+function formatDate(dateStr: string) {
+  return format(parseISO(dateStr), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
 }

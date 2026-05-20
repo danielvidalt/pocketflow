@@ -29,7 +29,7 @@ const FIXED_FREQS: Array<{id:'weekly'|'fortnightly'|'monthly',label:string}> = [
 ]
 
 export default function GastosPage(){
-  const {expenses,addExpense,deleteExpense,weeklyIncome,weeklyFixedCosts,recurringExpenses,addRecurringExpense,deleteRecurringExpense}=usePocketFlow()
+  const {expenses,addExpense,deleteExpense,weeklyIncome,weeklyFixedCosts,recurringExpenses,addRecurringExpense,deleteRecurringExpense,incomeEntries}=usePocketFlow()
   const [tab,setTab]=useState<'daily'|'fixed'>('daily')
 
   // daily tab state
@@ -39,6 +39,19 @@ export default function GastosPage(){
   const [expDate,setExpDate]=useState(today)
   const todayTotal=useMemo(()=>expenses.filter(e=>e.expense_date===today).reduce((s,e)=>s+e.amount,0),[expenses,today])
   const available=Math.max(0,(weeklyIncome()-weeklyFixedCosts())/7-todayTotal)
+
+  // weekly balance
+  const {wkStart,wkEnd}=useMemo(()=>{
+    const now=new Date(); const day=now.getDay(); const diff=(day===0?-6:1)-day
+    const mon=new Date(now); mon.setDate(now.getDate()+diff)
+    const wkStart=format(mon,'yyyy-MM-dd')
+    const sun=new Date(mon); sun.setDate(mon.getDate()+6)
+    const wkEnd=format(sun,'yyyy-MM-dd')
+    return {wkStart,wkEnd}
+  },[])
+  const weekCollected=useMemo(()=>incomeEntries.filter(e=>e.received_at>=wkStart&&e.received_at<=wkEnd).reduce((s,e)=>s+e.amount,0),[incomeEntries,wkStart,wkEnd])
+  const weekSpent=useMemo(()=>expenses.filter(e=>e.expense_date>=wkStart&&e.expense_date<=wkEnd).reduce((s,e)=>s+e.amount,0),[expenses,wkStart,wkEnd])
+  const weekRemaining=weekCollected-weekSpent
   const recentGroups=useMemo(()=>{
     const now=new Date()
     const groups:Array<{label:string;items:typeof expenses}>=[]
@@ -83,6 +96,13 @@ export default function GastosPage(){
       <div className="grid grid-cols-2 gap-2" style={{padding:'14px 16px 0',flexShrink:0}}>
         <MetricCard label="Hoy gastaste" value={formatAUD(todayTotal)} valueColor="var(--red)"/>
         <MetricCard label="Disponible hoy" value={formatAUD(available)} valueColor="var(--green)"/>
+      </div>
+      <div style={{padding:'8px 16px 0',flexShrink:0}}>
+        <MetricCard
+          label="Restante esta semana"
+          value={formatAUD(Math.abs(weekRemaining))}
+          valueColor={weekRemaining>=0?'var(--green)':'var(--red)'}
+          sub={weekRemaining>=0?`${formatAUD(weekCollected)} cobrado · ${formatAUD(weekSpent)} gastado`:`Gastaste ${formatAUD(Math.abs(weekRemaining))} más de lo cobrado`}/>
       </div>
       <div style={{padding:'12px 16px',borderBottom:'0.5px solid var(--border)',flexShrink:0}}>
         <div style={{fontSize:10,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.05em',fontWeight:500}}>Registrar gasto</div>

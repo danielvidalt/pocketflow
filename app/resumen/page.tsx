@@ -68,14 +68,19 @@ export default function ResumenPage(){
           </div>}
         </div>)
       })}
-      {savingsGoals.map(g=>{const pct=Math.min(100,(g.current_amount/g.target_amount)*100);return(<div key={g.id} className="card" style={{marginBottom:10}}>
-        <div className="flex items-center justify-between" style={{marginBottom:8}}>
-          <div className="section-label" style={{margin:0}}>{g.name}</div>
-          <span style={{fontSize:10,fontWeight:500,padding:'3px 8px',borderRadius:20,background:'var(--blue-bg)',color:'var(--blue)'}}>{formatAUD(g.current_amount)} / {formatAUD(g.target_amount)}</span>
-        </div>
-        <ProgressBar percent={pct} color={g.color} height={8}/>
-        <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>{Math.round(pct)}% alcanzado</div>
-      </div>)})}
+      {savingsGoals.map(g=>{
+        const displayName=g.name.split('\x1F')[0]
+        const hasTarget=g.target_amount>0
+        const pct=hasTarget?Math.min(100,(g.current_amount/g.target_amount)*100):0
+        return(<div key={g.id} className="card" style={{marginBottom:10}}>
+          <div className="flex items-center justify-between" style={{marginBottom:8}}>
+            <div className="section-label" style={{margin:0}}>{displayName}</div>
+            <span style={{fontSize:10,fontWeight:500,padding:'3px 8px',borderRadius:20,background:'var(--blue-bg)',color:'var(--blue)'}}>{formatAUD(g.current_amount)}{hasTarget?` / ${formatAUD(g.target_amount)}`:''}</span>
+          </div>
+          {hasTarget&&<><ProgressBar percent={pct} color={g.color} height={8}/>
+          <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>{Math.round(pct)}% alcanzado</div></>}
+        </div>)
+      })}
     </div>
     <BottomNav/>
   </>)
