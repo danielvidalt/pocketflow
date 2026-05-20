@@ -54,7 +54,7 @@ export const usePocketFlow = create<State>((set,get) => ({
   },
   registerPayment: async (sourceId,amount,date,note) => {
     const db=getClient(); const {data:{user}}=await db.auth.getUser(); if(!user)return
-    const received_at=date||new Date().toISOString().split('T')[0]
+    const d=new Date(); const received_at=date||`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const {data:row}=await db.from('income_entries').insert({user_id:user.id,source_id:sourceId,amount,received_at,note:note||null}).select().single()
     if(row) set(s=>({incomeEntries:[row,...s.incomeEntries]}))
   },
