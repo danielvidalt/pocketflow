@@ -109,14 +109,16 @@ export default function ResumenPage(){
         })}
       </div>}
       {/* Zona de peligro */}
-      <div style={{marginTop:24,marginBottom:32,padding:'12px 16px',background:'var(--red-bg)',borderRadius:'var(--radius)',border:'0.5px solid rgba(239,68,68,0.25)'}}>
-        <div style={{fontSize:11,fontWeight:600,color:'rgba(239,68,68,0.95)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Zona de peligro</div>
+      <div style={{marginTop:40,marginBottom:48,padding:'8px 16px',background:'transparent',borderRadius:'var(--radius)',border:'none'}}>
         <button onClick={()=>setShowDeleteAll(true)}
-          style={{width:'100%',padding:'8px 10px',borderRadius:'8px',background:'rgba(239,68,68,0.85)',color:'#fff',border:'1px solid rgba(239,68,68,0.95)',fontSize:12,fontWeight:500,cursor:'pointer'}}>
+          style={{width:'100%',padding:'6px 10px',borderRadius:'8px',background:'rgba(107,114,128,0.08)',color:'rgba(55,65,81,0.95)',border:'1px solid rgba(107,114,128,0.2)',fontSize:12,fontWeight:500,cursor:'pointer'}}
+        />
+        <button onClick={()=>setShowDeleteAll(true)}
+          style={{width:'100%',padding:'6px 10px',borderRadius:'8px',background:'rgba(107,114,128,0.08)',color:'rgba(55,65,81,0.95)',border:'1px solid rgba(107,114,128,0.2)',fontSize:12,fontWeight:500,cursor:'pointer'}}>
           Borrar todos los datos
         </button>
       </div>
-      <div style={{height:40}} />
+      <div style={{height:80}} />
     </div>
 
     {showDeleteAll&&(
