@@ -153,13 +153,30 @@ export default function AhorrosPage() {
             </div>
             <ProgressBar percent={Math.min(100, pct)} color={isOver?'var(--red)':funded?'var(--green)':g.color} height={8}/>
 
-            {/* Total acumulado como referencia */}
-            {g.current_amount > 0 && (
-              <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>
-                Total ahorrado: <span style={{fontWeight:500,color:'var(--text1)'}}>{formatAUD(g.current_amount)}</span>
-                {g.target_amount > 0 && <span> · Meta: {formatAUD(g.target_amount)}</span>}
-              </div>
-            )}
+            {/* Total acumulado — con barra de meta si la tiene */}
+            {(g.current_amount > 0 || g.target_amount > 0) && (() => {
+              const metaPct = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0
+              const metaReached = g.current_amount >= g.target_amount && g.target_amount > 0
+              return (
+                <div style={{marginTop:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
+                  <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',marginBottom:6}}>Total ahorrado</div>
+                  {g.target_amount > 0 ? (
+                    <>
+                      <div className="flex items-baseline gap-2" style={{marginBottom:2}}>
+                        <span style={{fontSize:16,fontWeight:700,color:metaReached?'var(--green)':'var(--text1)'}}>{formatAUD(g.current_amount)}</span>
+                        <span style={{fontSize:12,color:'var(--text3)'}}>de {formatAUD(g.target_amount)}</span>
+                      </div>
+                      <div style={{fontSize:11,marginBottom:6,fontWeight:metaReached?600:400,color:metaReached?'var(--green)':'var(--text3)'}}>
+                        {metaReached ? '✓ Meta alcanzada' : `Faltan ${formatAUD(g.target_amount - g.current_amount)}`}
+                      </div>
+                      <ProgressBar percent={metaPct} color={metaReached?'var(--green)':g.color} height={6}/>
+                    </>
+                  ) : (
+                    <span style={{fontSize:15,fontWeight:600,color:'var(--text1)'}}>{formatAUD(g.current_amount)}</span>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Historial expandible */}
             {allEntries.length > 0 && (
