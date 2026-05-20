@@ -6,23 +6,28 @@ import { formatAUD, weeklyEquivalent, CAT_COLORS, CAT_LABELS } from '@/lib/types
 import type { ExpenseCategory } from '@/lib/types'
 import { SectionHeader, ProgressBar, MetricCard } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
-import { startOfWeek,endOfWeek,startOfMonth,endOfMonth,isWithinInterval,parseISO } from 'date-fns'
+import { startOfWeek,endOfWeek,startOfMonth,endOfMonth,isWithinInterval,parseISO,subDays } from 'date-fns'
 import { RefreshCw } from 'lucide-react'
 
 export default function ResumenPage(){
   const {incomeSources,incomeEntries,expenses,debtPockets,savingsGoals,exchangeRates,deleteAllData}=usePocketFlow()
-  const [period,setPeriod]=useState<'week'|'month'>('week')
+  const [period,setPeriod]=useState<'week'|'fortnight'|'month'>('week')
   const [showDeleteAll,setShowDeleteAll]=useState(false)
   const [deletingAll,setDeletingAll]=useState(false)
   const now=new Date()
-  const range=period==='week'?{start:startOfWeek(now,{weekStartsOn:1}),end:endOfWeek(now,{weekStartsOn:1})}:{start:startOfMonth(now),end:endOfMonth(now)}
+  const range=period==='week'
+    ?{start:startOfWeek(now,{weekStartsOn:1}),end:endOfWeek(now,{weekStartsOn:1})}
+    :period==='fortnight'
+      ?{start:subDays(now,13),end:now}
+      :{start:startOfMonth(now),end:endOfMonth(now)}
   const entries=useMemo(()=>incomeEntries.filter(e=>isWithinInterval(parseISO(e.received_at),range)),[incomeEntries,period])
   const exps=useMemo(()=>expenses.filter(e=>isWithinInterval(parseISO(e.expense_date),range)),[expenses,period])
   const cobrado=entries.reduce((s,e)=>s+e.amount,0)
   const gastado=exps.reduce((s,e)=>s+e.amount,0)
   const totalAhorros=savingsGoals.reduce((s,g)=>s+g.current_amount,0)
   const weekly=incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0)
-  const expected=period==='week'?weekly:weekly*4.33
+  const expected=period==='week'?weekly:period==='fortnight'?weekly*2:weekly*4.33
+  const periodLabel=period==='week'?'esta semana':period==='fortnight'?'esta quincena':'este mes'
   const catDist=useMemo(()=>{const m:Partial<Record<ExpenseCategory,number>>={};exps.forEach(e=>{m[e.category]=(m[e.category]||0)+e.amount});return Object.entries(m).sort(([,a],[,b])=>b-a).map(([c,a])=>({cat:c as ExpenseCategory,amt:a as number}))},[exps])
   const mx=catDist[0]?.amt||1
 
@@ -30,12 +35,14 @@ export default function ResumenPage(){
     <SectionHeader title="Resumen"/>
     <div className="scroll-area" style={{padding:16}}>
       <div style={{display:'flex',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:3,marginBottom:14}}>
-        {(['week','month'] as const).map(p=><button key={p} onClick={()=>setPeriod(p)} style={{flex:1,padding:7,borderRadius:6,fontSize:12,fontWeight:500,border:'none',cursor:'pointer',background:period===p?'var(--bg)':'transparent',color:period===p?'var(--text1)':'var(--text2)',boxShadow:period===p?'0 1px 3px rgba(0,0,0,.1)':'none'}}>{p==='week'?'Esta semana':'Este mes'}</button>)}
+        {([['week','Esta semana'],['fortnight','Esta quincena'],['month','Este mes']] as const).map(([p,lbl])=>(
+          <button key={p} onClick={()=>setPeriod(p)} style={{flex:1,padding:7,borderRadius:6,fontSize:12,fontWeight:500,border:'none',cursor:'pointer',background:period===p?'var(--bg)':'transparent',color:period===p?'var(--text1)':'var(--text2)',boxShadow:period===p?'0 1px 3px rgba(0,0,0,.1)':'none'}}>{lbl}</button>
+        ))}
       </div>
 
       {/* Métricas — Gastos es clickeable */}
       <div className="grid grid-cols-3 gap-2" style={{marginBottom:12}}>
-        <MetricCard label="Ingresos" value={formatAUD(cobrado)} valueColor="var(--green)" sub={period==='week'?'esta semana':'este mes'}/>
+        <MetricCard label="Ingresos" value={formatAUD(cobrado)} valueColor="var(--green)" sub={periodLabel}/>
         <Link href="/gastos/historial" style={{display:'block',textDecoration:'none'}}>
           <div style={{background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'10px 12px',height:'100%',cursor:'pointer'}}>
             <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Gastos</div>
