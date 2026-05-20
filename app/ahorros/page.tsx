@@ -18,6 +18,25 @@ const FREQS: Array<{ id: 'weekly'|'fortnightly'|'monthly'; label: string; short:
 ]
 const FREQ_DIVISORS: Record<string, number> = { weekly: 1, fortnightly: 2, monthly: 4.33 }
 
+function periodRange(frequency: 'weekly'|'fortnightly'|'monthly') {
+  const now = new Date()
+  const todayStr = format(now, 'yyyy-MM-dd')
+  if (frequency === 'weekly') {
+    const day = now.getDay(); const diff = (day === 0 ? -6 : 1) - day
+    const mon = new Date(now); mon.setDate(now.getDate() + diff)
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    return { start: format(mon, 'yyyy-MM-dd'), end: format(sun, 'yyyy-MM-dd') }
+  }
+  if (frequency === 'fortnightly') {
+    const s = new Date(now); s.setDate(now.getDate() - 13)
+    return { start: format(s, 'yyyy-MM-dd'), end: todayStr }
+  }
+  return {
+    start: format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'),
+    end: format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd'),
+  }
+}
+
 function encEnv(name: string, type: '%'|'$', value: number) { return `${name}${D}${type}${value}` }
 function decEnv(raw: string): { name: string; type: '%'|'$'; value: number } {
   const i = raw.indexOf(D)
@@ -76,28 +95,35 @@ export default function AhorrosPage() {
         const { name, type, value } = decEnv(g.name)
         const freq = g.frequency || 'monthly'
         const freqInfo = FREQS.find(f => f.id === freq)!
-        const weeklyAlloc = type === '%'
-          ? wIncome * value / 100
-          : value / FREQ_DIVISORS[freq]
-        const allocLabel = type === '%'
-          ? `${value}% del ingreso / ${freqInfo.short}`
-          : `${formatAUD(value)} / ${freqInfo.short}`
-        const entries = expenses
+
+        // Monto planificado para este período
+        const plannedPerPeriod = type === '%'
+          ? wIncome * FREQ_DIVISORS[freq] * value / 100
+          : value
+
+        // Depósitos de este período
+        const period = periodRange(freq)
+        const periodEntries = expenses
+          .filter(e => e.name === `Ahorro: ${name}` && e.expense_date >= period.start && e.expense_date <= period.end)
+          .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
+        const depositedThisPeriod = periodEntries.reduce((s, e) => s + e.amount, 0)
+
+        // Todos los movimientos (para expandir)
+        const allEntries = expenses
           .filter(e => e.name === `Ahorro: ${name}`)
           .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
+
+        const pct = plannedPerPeriod > 0 ? (depositedThisPeriod / plannedPerPeriod) * 100 : 0
+        const isOver = plannedPerPeriod > 0 && depositedThisPeriod > plannedPerPeriod
+        const funded = pct >= 100
         const isExpanded = expandedId === g.id
-        const visibleEntries = isExpanded ? entries : entries.slice(0, 1)
-        const pct = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0
+        const visibleEntries = isExpanded ? allEntries : periodEntries
 
         return (
-          <div key={g.id} className="card" style={{marginBottom:10,borderLeft:`3px solid ${g.color}`}}>
+          <div key={g.id} className="card" style={{marginBottom:10,borderLeft:`3px solid ${isOver ? 'var(--red)' : g.color}`}}>
             {/* Header con 3 puntitos */}
             <div className="flex items-center justify-between" style={{marginBottom:6}}>
-              <button onClick={() => setExpandedId(isExpanded ? null : g.id)}
-                style={{flex:1,textAlign:'left',background:'none',border:'none',cursor:'pointer',padding:0}}>
-                <span style={{fontSize:14,fontWeight:600,color:'var(--text1)'}}>{name}</span>
-                <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>{isExpanded ? '▲' : '▼'}</span>
-              </button>
+              <span style={{fontSize:14,fontWeight:600,color:'var(--text1)'}}>{name}</span>
               <div style={{position:'relative'}}>
                 <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === g.id ? null : g.id) }}
                   style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)',padding:'0 4px'}}>
@@ -117,32 +143,35 @@ export default function AhorrosPage() {
               </div>
             </div>
 
-            {/* Monto + info */}
-            <div style={{fontSize:28,fontWeight:700,color:'var(--text1)',marginBottom:2}}>{formatAUD(g.current_amount)}</div>
-            <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>
-              {allocLabel}
-              {weeklyAlloc > 0 && <span style={{color:'var(--blue)',fontWeight:500}}> · {formatAUD(weeklyAlloc)}/sem</span>}
+            {/* Monto depositado vs planificado — igual que gastos fijos */}
+            <div className="flex items-baseline gap-2" style={{marginBottom:2}}>
+              <div style={{fontSize:28,fontWeight:700,color:isOver?'var(--red)':'var(--text1)'}}>{formatAUD(depositedThisPeriod)}</div>
+              <div style={{fontSize:13,color:'var(--text3)'}}>de {formatAUD(plannedPerPeriod)}</div>
             </div>
+            <div style={{fontSize:11,marginBottom:8,fontWeight:(funded||isOver)?600:400,color:isOver?'var(--red)':funded?'var(--green)':'var(--text3)'}}>
+              {freqInfo.label} · {isOver ? `Excede ${formatAUD(depositedThisPeriod - plannedPerPeriod)}` : funded ? '✓ Completado' : `Faltan ${formatAUD(plannedPerPeriod - depositedThisPeriod)}`}
+            </div>
+            <ProgressBar percent={Math.min(100, pct)} color={isOver?'var(--red)':funded?'var(--green)':g.color} height={8}/>
 
-            {g.target_amount > 0 && (
-              <div style={{marginBottom:10}}>
-                <ProgressBar percent={pct} color={g.color} height={8}/>
-                <div style={{display:'flex',justifyContent:'space-between',marginTop:6,fontSize:12,color:'var(--text3)'}}>
-                  <span>Meta: {formatAUD(g.target_amount)}</span>
-                  <span style={{fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0,g.target_amount-g.current_amount))} faltan</span>
-                </div>
+            {/* Total acumulado como referencia */}
+            {g.current_amount > 0 && (
+              <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>
+                Total ahorrado: <span style={{fontWeight:500,color:'var(--text1)'}}>{formatAUD(g.current_amount)}</span>
+                {g.target_amount > 0 && <span> · Meta: {formatAUD(g.target_amount)}</span>}
               </div>
             )}
 
             {/* Historial expandible */}
-            {entries.length > 0 && (
-              <div style={{marginBottom:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
+            {allEntries.length > 0 && (
+              <div style={{marginTop:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
                 <div className="flex items-center justify-between" style={{marginBottom:4}}>
-                  <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>Movimientos</span>
-                  {entries.length > 1 && (
+                  <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>
+                    {isExpanded ? 'Todos los movimientos' : 'Este período'}
+                  </span>
+                  {allEntries.length > periodEntries.length && (
                     <button onClick={() => setExpandedId(isExpanded ? null : g.id)}
                       style={{fontSize:11,color:'var(--blue)',background:'none',border:'none',cursor:'pointer',fontWeight:500}}>
-                      {isExpanded ? 'Ver menos' : `Ver todos (${entries.length})`}
+                      {isExpanded ? 'Ver menos' : `Ver todos (${allEntries.length})`}
                     </button>
                   )}
                 </div>
