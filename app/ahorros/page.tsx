@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD } from '@/lib/types'
-import { SectionHeader, EmptyState } from '@/components/ui'
+import { SectionHeader, EmptyState, ProgressBar } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { parseISO, format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -60,10 +60,19 @@ export default function AhorrosPage() {
               <button onClick={() => deleteSavingsGoal(g.id)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text3)'}}><X size={14}/></button>
             </div>
             <div style={{fontSize:28,fontWeight:700,color:'var(--text1)',marginBottom:2}}>{formatAUD(g.current_amount)}</div>
-            <div style={{fontSize:11,color:'var(--text3)',marginBottom:10}}>
+            <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>
               Asignación: {type === '%' ? `${value}% del ingreso semanal` : `${formatAUD(value)}/sem`}
               {weeklyAlloc > 0 && <span style={{color:'var(--blue)',fontWeight:500}}> = {formatAUD(weeklyAlloc)}/sem</span>}
             </div>
+            {g.target_amount > 0 && (
+              <div style={{marginBottom:10}}>
+                <ProgressBar percent={g.target_amount>0?Math.min(100, (g.current_amount / g.target_amount) * 100):0} color={g.color} height={8} />
+                <div style={{display:'flex',justifyContent:'space-between',marginTop:6,fontSize:12,color:'var(--text3)'}}>
+                  <span>Meta: {formatAUD(g.target_amount)}</span>
+                  <span style={{fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0, g.target_amount - g.current_amount))} faltan</span>
+                </div>
+              </div>
+            )}
             {addingTo === g.id ? (
               <div>
                 <div className="flex gap-2 items-center" style={{marginBottom:8}}>
@@ -112,6 +121,7 @@ function NewEnvModal({ onClose, onSave, weeklyIncome }: { onClose:()=>void; onSa
   const [allocValue, setAllocValue] = useState('')
   const [color, setColor] = useState(COLORS[0])
   const [saving, setSaving] = useState(false)
+  const [targetAmount, setTargetAmount] = useState('')
 
   const val = parseFloat(allocValue) || 0
   const preview = allocType === '%' ? weeklyIncome * val / 100 : val
@@ -119,7 +129,8 @@ function NewEnvModal({ onClose, onSave, weeklyIncome }: { onClose:()=>void; onSa
   async function save() {
     if (!name.trim() || !val) return
     setSaving(true)
-    await onSave({ name: encEnv(name.trim(), allocType, val), target_amount: 0, current_amount: 0, deadline: null, color })
+    const target = parseFloat(targetAmount) || 0
+    await onSave({ name: encEnv(name.trim(), allocType, val), target_amount: target, current_amount: 0, deadline: null, color })
     onClose()
   }
 
@@ -154,6 +165,9 @@ function NewEnvModal({ onClose, onSave, weeklyIncome }: { onClose:()=>void; onSa
         <div className="flex gap-2" style={{marginBottom:18}}>
           {COLORS.map(c => <button key={c} onClick={() => setColor(c)} style={{width:26,height:26,borderRadius:'50%',background:c,border:color===c?'2.5px solid var(--text1)':'2px solid transparent',cursor:'pointer'}}/>)}
         </div>
+        <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Meta (opcional)</label>
+        <input type="number" inputMode="decimal" value={targetAmount} onChange={e => setTargetAmount(e.target.value)} placeholder="Ej: 1500  →  Meta total"
+          style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:14,marginBottom:12,outline:'none'}}/>
         <button onClick={save} disabled={saving||!name||!allocValue}
           style={{width:'100%',padding:13,borderRadius:10,background:'var(--blue)',color:'#fff',fontSize:14,fontWeight:500,border:'none',cursor:'pointer',opacity:(!name||!allocValue||saving)?.5:1}}>
           {saving ? 'Guardando…' : 'Crear sobre'}
