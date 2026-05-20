@@ -93,7 +93,7 @@ export default function HomePage(){
           <div style={{fontSize:13,color:'var(--text1)'}}>{exp.name}</div>
           <span style={{fontSize:13,fontWeight:500,color:'var(--red)',whiteSpace:'nowrap'}}>−{formatAUD(exp.amount)}</span>
         </div>))}
-        <BtnGhost className="mt-2.5"><Link href="/gastos" className="w-full flex items-center justify-center" style={{color:'var(--text2)',fontSize:13}}>Ver todos los gastos</Link></BtnGhost>
+        <BtnGhost className="mt-2.5"><Link href="/gastos/historial" className="w-full flex items-center justify-center" style={{color:'var(--text2)',fontSize:13}}>Ver todos los gastos</Link></BtnGhost>
       </div>
     </div>
     <BottomNav/>

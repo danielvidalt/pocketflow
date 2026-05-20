@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD, weeklyEquivalent, CAT_COLORS, CAT_LABELS } from '@/lib/types'
 import type { ExpenseCategory } from '@/lib/types'
@@ -17,26 +18,45 @@ export default function ResumenPage(){
   const exps=useMemo(()=>expenses.filter(e=>isWithinInterval(parseISO(e.expense_date),range)),[expenses,period])
   const cobrado=entries.reduce((s,e)=>s+e.amount,0)
   const gastado=exps.reduce((s,e)=>s+e.amount,0)
+  const totalAhorros=savingsGoals.reduce((s,g)=>s+g.current_amount,0)
   const weekly=incomeSources.filter(s=>s.is_active).reduce((sum,s)=>sum+weeklyEquivalent(s),0)
   const expected=period==='week'?weekly:weekly*4.33
   const catDist=useMemo(()=>{const m:Partial<Record<ExpenseCategory,number>>={};exps.forEach(e=>{m[e.category]=(m[e.category]||0)+e.amount});return Object.entries(m).sort(([,a],[,b])=>b-a).map(([c,a])=>({cat:c as ExpenseCategory,amt:a as number}))},[exps])
   const mx=catDist[0]?.amt||1
+
   return(<>
     <SectionHeader title="Resumen"/>
     <div className="scroll-area" style={{padding:16}}>
       <div style={{display:'flex',background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:3,marginBottom:14}}>
         {(['week','month'] as const).map(p=><button key={p} onClick={()=>setPeriod(p)} style={{flex:1,padding:7,borderRadius:6,fontSize:12,fontWeight:500,border:'none',cursor:'pointer',background:period===p?'var(--bg)':'transparent',color:period===p?'var(--text1)':'var(--text2)',boxShadow:period===p?'0 1px 3px rgba(0,0,0,.1)':'none'}}>{p==='week'?'Esta semana':'Este mes'}</button>)}
       </div>
-      <div className="grid grid-cols-2 gap-2" style={{marginBottom:12}}>
-        <MetricCard label="Cobrado" value={formatAUD(cobrado)} valueColor="var(--green)" sub={period==='week'?'esta semana':'este mes'}/>
-        <MetricCard label="Gastos" value={formatAUD(gastado)} valueColor="var(--red)" sub="registrados"/>
+
+      {/* Métricas — Gastos es clickeable */}
+      <div className="grid grid-cols-3 gap-2" style={{marginBottom:12}}>
+        <MetricCard label="Ingresos" value={formatAUD(cobrado)} valueColor="var(--green)" sub={period==='week'?'esta semana':'este mes'}/>
+        <Link href="/gastos/historial" style={{display:'block',textDecoration:'none'}}>
+          <div style={{background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'10px 12px',height:'100%',cursor:'pointer'}}>
+            <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Gastos</div>
+            <div style={{fontSize:20,fontWeight:600,color:'var(--red)'}}>{formatAUD(gastado)}</div>
+            <div style={{fontSize:10,color:'var(--blue)',marginTop:2}}>ver todos →</div>
+          </div>
+        </Link>
+        <Link href="/ahorros" style={{display:'block',textDecoration:'none'}}>
+          <div style={{background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'10px 12px',height:'100%',cursor:'pointer'}}>
+            <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Ahorros</div>
+            <div style={{fontSize:20,fontWeight:600,color:'var(--blue)'}}>{formatAUD(totalAhorros)}</div>
+            <div style={{fontSize:10,color:'var(--blue)',marginTop:2}}>ver sobres →</div>
+          </div>
+        </Link>
       </div>
+
       <div style={{background:'var(--bg2)',borderRadius:'var(--radius-sm)',padding:'10px 12px',marginBottom:12}}>
         <div style={{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>Disponible real</div>
         <div style={{fontSize:26,fontWeight:600,color:'var(--text1)'}}>{formatAUD(Math.max(0,cobrado-gastado))}</div>
         <ProgressBar percent={expected>0?(cobrado/expected)*100:0} color="var(--green)" height={6}/>
         <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{Math.round(expected>0?(cobrado/expected)*100:0)}% de {formatAUD(expected)} esperado</div>
       </div>
+
       {catDist.length>0&&<div className="card" style={{marginBottom:10}}>
         <div className="section-label">Por categoría</div>
         {catDist.map(({cat,amt})=><div key={cat} className="flex items-center gap-2.5 py-1.5" style={{borderBottom:'0.5px solid var(--border)'}}>
@@ -45,6 +65,7 @@ export default function ResumenPage(){
           <div style={{fontSize:12,fontWeight:500,color:'var(--text1)',whiteSpace:'nowrap'}}>{formatAUD(amt)}</div>
         </div>)}
       </div>}
+
       {debtPockets.map(d=>{
         const rate=exchangeRates[d.target_currency]||1
         const tAUD=d.target_currency==='AUD'?d.target_amount:d.target_amount/rate
@@ -68,19 +89,23 @@ export default function ResumenPage(){
           </div>}
         </div>)
       })}
-      {savingsGoals.map(g=>{
-        const displayName=g.name.split('\x1F')[0]
-        const hasTarget=g.target_amount>0
-        const pct=hasTarget?Math.min(100,(g.current_amount/g.target_amount)*100):0
-        return(<div key={g.id} className="card" style={{marginBottom:10}}>
-          <div className="flex items-center justify-between" style={{marginBottom:8}}>
-            <div className="section-label" style={{margin:0}}>{displayName}</div>
-            <span style={{fontSize:10,fontWeight:500,padding:'3px 8px',borderRadius:20,background:'var(--blue-bg)',color:'var(--blue)'}}>{formatAUD(g.current_amount)}{hasTarget?` / ${formatAUD(g.target_amount)}`:''}</span>
-          </div>
-          {hasTarget&&<><ProgressBar percent={pct} color={g.color} height={8}/>
-          <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>{Math.round(pct)}% alcanzado</div></>}
-        </div>)
-      })}
+
+      {savingsGoals.length>0&&<div className="card" style={{marginBottom:10}}>
+        <div className="section-label">Sobres de ahorro</div>
+        {savingsGoals.map(g=>{
+          const displayName=g.name.split('\x1F')[0]
+          const hasTarget=g.target_amount>0
+          const pct=hasTarget?Math.min(100,(g.current_amount/g.target_amount)*100):0
+          return(<div key={g.id} style={{paddingTop:10,borderTop:'0.5px solid var(--border)'}}>
+            <div className="flex items-center justify-between" style={{marginBottom:hasTarget?6:0}}>
+              <div style={{fontSize:13,fontWeight:500,color:'var(--text1)'}}>{displayName}</div>
+              <span style={{fontSize:13,fontWeight:600,color:'var(--blue)'}}>{formatAUD(g.current_amount)}</span>
+            </div>
+            {hasTarget&&<><ProgressBar percent={pct} color={g.color} height={6}/>
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{Math.round(pct)}% alcanzado</div></>}
+          </div>)
+        })}
+      </div>}
     </div>
     <BottomNav/>
   </>)
