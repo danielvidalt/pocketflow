@@ -152,7 +152,7 @@ export default function RegistrarPage() {
         {/* Sobres Fijos */}
         {expType === 'fixed' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: 180, overflowY: 'auto' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Elegí el sobre a descontar</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Se descontará del sobre seleccionado</div>
             {activeFixed.length === 0
               ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Sin sobres fijos. Creá uno en Gastos → Fijos.</div>
               : activeFixed.map(env => {
@@ -161,6 +161,8 @@ export default function RegistrarPage() {
                   const pr = periodRange(env.frequency)
                   const allocs = fixedExpenseAllocations.filter(a => a.recurring_expense_id === env.id && a.allocated_at >= pr.start && a.allocated_at <= pr.end)
                   const avail = allocs.filter(a => a.type !== 'withdrawal').reduce((s, a) => s + a.amount, 0) - allocs.filter(a => a.type === 'withdrawal').reduce((s, a) => s + a.amount, 0)
+                  const amtNum = parseFloat(amount) || 0
+                  const quedara = avail - amtNum
                   const on = selectedEnv === env.id
                   return (
                     <button key={env.id} onClick={() => setSelectedEnv(on ? null : env.id)}
@@ -168,7 +170,14 @@ export default function RegistrarPage() {
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: envCol, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Disponible: <span style={{ color: avail >= 0 ? envCol : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
+                        {amtNum > 0
+                          ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                              Saldo: <span style={{ fontWeight: 600, color: avail >= 0 ? envCol : 'var(--red)' }}>{formatAUD(avail)}</span>
+                              <span style={{ color: 'var(--text3)' }}> → quedará </span>
+                              <span style={{ fontWeight: 600, color: quedara >= 0 ? envCol : 'var(--red)' }}>{formatAUD(quedara)}</span>
+                            </div>
+                          : <div style={{ fontSize: 11, color: 'var(--text3)' }}>Saldo disponible: <span style={{ color: avail >= 0 ? envCol : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
+                        }
                       </div>
                       {on && <span style={{ color: envCol }}>✓</span>}
                     </button>
@@ -181,13 +190,15 @@ export default function RegistrarPage() {
         {/* Sobres de Ahorro */}
         {expType === 'savings' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: 180, overflowY: 'auto' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Elegí el sobre a descontar</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Se descontará del ahorro seleccionado</div>
             {savingsGoals.length === 0
               ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Sin sobres de ahorro. Creá uno en Ahorros.</div>
               : savingsGoals.map(goal => {
                   const name = decName(goal.name)
                   const totalW = savingsWithdrawals.filter(w => w.savings_goal_id === goal.id).reduce((s, w) => s + w.amount, 0)
                   const avail = goal.current_amount - totalW
+                  const amtNum = parseFloat(amount) || 0
+                  const quedara = avail - amtNum
                   const on = selectedSav === goal.id
                   return (
                     <button key={goal.id} onClick={() => setSelectedSav(on ? null : goal.id)}
@@ -195,7 +206,14 @@ export default function RegistrarPage() {
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: goal.color, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Disponible: <span style={{ color: avail >= 0 ? goal.color : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
+                        {amtNum > 0
+                          ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                              Saldo: <span style={{ fontWeight: 600, color: avail >= 0 ? goal.color : 'var(--red)' }}>{formatAUD(avail)}</span>
+                              <span style={{ color: 'var(--text3)' }}> → quedará </span>
+                              <span style={{ fontWeight: 600, color: quedara >= 0 ? goal.color : 'var(--red)' }}>{formatAUD(quedara)}</span>
+                            </div>
+                          : <div style={{ fontSize: 11, color: 'var(--text3)' }}>Saldo disponible: <span style={{ color: avail >= 0 ? goal.color : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
+                        }
                       </div>
                       {on && <span style={{ color: goal.color }}>✓</span>}
                     </button>

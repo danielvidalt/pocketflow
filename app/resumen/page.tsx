@@ -79,6 +79,15 @@ export default function ResumenPage() {
 
   const activeFixed = recurringExpenses.filter(e => e.is_active)
 
+  const totalFijoSpent = useMemo(() =>
+    activeFixed.reduce((sum, e) => {
+      const pr = periodRange(e.frequency)
+      const allocs = fixedExpenseAllocations.filter(a => a.recurring_expense_id === e.id && a.allocated_at >= pr.start && a.allocated_at <= pr.end)
+      return sum + allocs.filter(a => a.type === 'withdrawal').reduce((s, a) => s + a.amount, 0)
+    }, 0),
+    [activeFixed, fixedExpenseAllocations]
+  )
+
   // Savings totals
   const totalAhorros = savingsGoals.reduce((s, g) => {
     const w = savingsWithdrawals.filter(x => x.savings_goal_id === g.id).reduce((a, x) => a + x.amount, 0)
@@ -139,6 +148,10 @@ export default function ResumenPage() {
                   <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text1)', whiteSpace: 'nowrap', width: 70, textAlign: 'right' }}>{formatAUD(amt)}</div>
                 </div>
               ))}
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>Total gastado</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>−{formatAUD(gastadoRegular)}</span>
+              </div>
             </div>
         }
       </div>
@@ -162,17 +175,28 @@ export default function ResumenPage() {
                 const color = CAT_COLORS[e.category]
                 return (
                   <div key={e.id} style={{ paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
-                    <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                    <div className="flex items-center justify-between" style={{ marginBottom: 3 }}>
                       <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text1)' }}>{name}</span>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: avail < 0 ? 'var(--red)' : 'var(--text1)' }}>{formatAUD(avail)}</span>
-                        <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>/ {formatAUD(e.amount)}</span>
-                      </div>
+                      {spent > 0
+                        ? <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>−{formatAUD(spent)}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>descontado</span>
+                          </div>
+                        : <span style={{ fontSize: 11, color: 'var(--text3)' }}>Sin descuentos</span>
+                      }
+                    </div>
+                    <div style={{ fontSize: 11, color: avail < 0 ? 'var(--red)' : 'var(--text3)', marginBottom: 4 }}>
+                      Disponible: <span style={{ fontWeight: 600, color: avail < 0 ? 'var(--red)' : color }}>{formatAUD(avail)}</span>
+                      <span style={{ color: 'var(--text3)' }}> de {formatAUD(e.amount)}</span>
                     </div>
                     <ProgressBar percent={pct} color={avail < 0 ? 'var(--red)' : color} height={4} />
                   </div>
                 )
               })}
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>Total descontado</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: totalFijoSpent > 0 ? 'var(--red)' : 'var(--text3)' }}>{totalFijoSpent > 0 ? `−${formatAUD(totalFijoSpent)}` : formatAUD(0)}</span>
+              </div>
             </div>
         }
       </div>
@@ -204,8 +228,8 @@ export default function ResumenPage() {
                 )
               })}
               <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>Total disponible</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue)' }}>{formatAUD(totalAhorros)}</span>
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>Total ahorrado</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>{formatAUD(totalAhorros)}</span>
               </div>
             </div>
         }
