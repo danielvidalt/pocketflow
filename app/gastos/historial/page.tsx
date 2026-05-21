@@ -80,7 +80,7 @@ export default function HistorialPage() {
     : `${expenses.length} registros · ${formatAUD(total)} total`
 
   return (<>
-    <SectionHeader title="Todos los gastos" subtitle={subtitle} />
+    <SectionHeader title="Todos los gastos" subtitle={subtitle} back />
 
     {/* Search bar */}
     <div style={{ padding: '0 16px 8px' }}>

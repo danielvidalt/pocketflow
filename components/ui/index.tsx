@@ -1,5 +1,7 @@
 'use client'
 import { ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 import clsx from 'clsx'
 type PillColor = 'green'|'blue'|'red'|'purple'|'amber'|'gray'
 const PS: Record<PillColor,{bg:string;color:string}> = {
@@ -26,10 +28,12 @@ export function BtnPrimary({children,onClick,disabled,className=''}:{children:Re
 export function BtnGhost({children,onClick,className=''}:{children:ReactNode;onClick?:()=>void;className?:string}){
   return(<button onClick={onClick} className={clsx('flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-sm',className)} style={{border:'0.5px solid var(--border2)',color:'var(--text2)',background:'transparent'}}>{children}</button>)
 }
-export function SectionHeader({title,subtitle,action}:{title:string;subtitle?:string;action?:ReactNode}){
-  return(<div style={{padding:'16px 20px 12px',borderBottom:'0.5px solid var(--border)',background:'var(--bg)',flexShrink:0}}>
-    <div className="flex items-center justify-between">
-      <div>
+export function SectionHeader({title,subtitle,action,back}:{title:string;subtitle?:string;action?:ReactNode;back?:boolean}){
+  const router = useRouter()
+  return(<div style={{padding:'16px 16px 12px',borderBottom:'0.5px solid var(--border)',background:'var(--bg)',flexShrink:0}}>
+    <div className="flex items-center gap-2">
+      {back&&<button onClick={()=>router.back()} style={{width:34,height:34,borderRadius:10,background:'var(--bg2)',border:'0.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,cursor:'pointer'}}><ArrowLeft size={17} color="var(--text2)" strokeWidth={1.7}/></button>}
+      <div style={{flex:1}}>
         <div style={{fontSize:17,fontWeight:600,color:'var(--text1)'}}>{title}</div>
         {subtitle&&<div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{subtitle}</div>}
       </div>

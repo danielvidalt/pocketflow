@@ -8,7 +8,8 @@ import BottomNav from '@/components/BottomNav'
 import { parseISO, format, subDays } from 'date-fns'
 import { getSettings } from '@/lib/settings'
 import { es } from 'date-fns/locale'
-import { Plus, X, MoreHorizontal, Search, SlidersHorizontal } from 'lucide-react'
+import { Plus, X, MoreHorizontal, Search, SlidersHorizontal, History } from 'lucide-react'
+import Link from 'next/link'
 
 // Siempre usa hora LOCAL (evita el bug UTC vs hora australiana)
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
@@ -333,6 +334,12 @@ export default function GastosPage() {
 
       {/* Historial */}
       <div className="scroll-area" style={{ paddingLeft: 16, paddingRight: 16 }}>
+        <div className="flex items-center justify-between" style={{ paddingTop: 12, paddingBottom: 4 }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Historial</span>
+          <Link href="/gastos/historial" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
+            <History size={12} /> Ver todo
+          </Link>
+        </div>
         {expGroups.length === 0 && <EmptyState message={hasFilters ? 'Sin resultados' : 'Sin gastos registrados'} />}
         {expGroups.map(({ label, items }) => {
           const total = items.reduce((s, e) => s + e.amount, 0)

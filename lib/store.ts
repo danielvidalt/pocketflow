@@ -61,7 +61,7 @@ export const usePocketFlow = create<State>((set,get) => ({
 
   fetchAll: async () => {
     set({loading:true}); const db=getClient()
-    const [s,e,ex,r,d,g,fa,sw] = await Promise.all([
+    const [s,e,ex,r,d,g,fa] = await Promise.all([
       db.from('income_sources').select('*').order('created_at'),
       db.from('income_entries').select('*').order('received_at',{ascending:false}).limit(500),
       db.from('expenses').select('*').order('expense_date',{ascending:false}).limit(500),
@@ -69,12 +69,13 @@ export const usePocketFlow = create<State>((set,get) => ({
       db.from('debt_pockets').select('*').order('created_at'),
       db.from('savings_goals').select('*').order('created_at'),
       db.from('fixed_expense_allocations').select('*').order('allocated_at',{ascending:false}).limit(500),
-      db.from('savings_withdrawals').select('*').order('withdrawn_at',{ascending:false}).limit(500),
     ])
+    // savings_withdrawals se carga por separado — la tabla puede no existir todavía
+    const sw = await db.from('savings_withdrawals').select('*').order('withdrawn_at',{ascending:false}).limit(500).catch(()=>({data:[]}))
     set({
       incomeSources:s.data||[], incomeEntries:e.data||[], expenses:ex.data||[],
       recurringExpenses:r.data||[], fixedExpenseAllocations:fa.data||[], debtPockets:d.data||[], savingsGoals:g.data||[],
-      savingsWithdrawals:sw.data||[],
+      savingsWithdrawals:(sw as any).data||[],
       loading:false,
     })
   },
