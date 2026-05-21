@@ -1,7 +1,7 @@
 'use client'
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { usePocketFlow } from '@/lib/store'
-import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory, FREQ_LABELS } from '@/lib/types'
+import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory } from '@/lib/types'
 import type { RecurringExpense } from '@/lib/types'
 import { SectionHeader, EmptyState, ProgressBar } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
@@ -11,15 +11,10 @@ import { Plus, X, MoreHorizontal, Search, SlidersHorizontal, History } from 'luc
 import Link from 'next/link'
 
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
-function fmtDay(d: string) {
-  return format(parseISO(d), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
-}
+function fmtDay(d: string) { return format(parseISO(d), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase()) }
+
 const D = '\x1F'
-function decFixed(raw: string) {
-  const i = raw.indexOf(D)
-  return i === -1 ? { name: raw, date: '' } : { name: raw.slice(0, i), date: raw.slice(i + 1) }
-}
-function decSavings(raw: string) { const i = raw.indexOf(D); return { name: i === -1 ? raw : raw.slice(0, i) } }
+function decFixed(raw: string) { const i = raw.indexOf(D); return i === -1 ? { name: raw, date: '' } : { name: raw.slice(0, i), date: raw.slice(i + 1) } }
 function periodRange(frequency: 'weekly' | 'fortnightly' | 'monthly') {
   const now = new Date(); const todayStr = format(now, 'yyyy-MM-dd')
   if (frequency === 'weekly') {
@@ -36,42 +31,19 @@ function periodRange(frequency: 'weekly' | 'fortnightly' | 'monthly') {
 }
 
 const CATS = Object.entries(CAT_LABELS) as [ExpenseCategory, string][]
-const CAT_ICONS: Record<ExpenseCategory, string> = { food:'🍽️', supermarket:'🛒', transport:'🚌', leisure:'🎬', shopping:'🛍️', health:'💊', housing:'🏠', subscriptions:'📱', debt:'💳', bank:'🏦', other:'···' }
-const ENV_COLORS: [ExpenseCategory, string][] = [['food','#1D9E75'],['transport','#534AB7'],['leisure','#BA7517'],['shopping','#993556'],['health','#3B6D11'],['housing','#185FA5'],['subscriptions','#D85A30'],['debt','#C0392B'],['bank','#1A6EA8'],['other','#5F5E5A']]
+const CAT_ICONS: Record<ExpenseCategory, string> = { food: '🍽️', supermarket: '🛒', transport: '🚌', leisure: '🎬', shopping: '🛍️', health: '💊', housing: '🏠', subscriptions: '📱', debt: '💳', bank: '🏦', other: '···' }
+const ENV_COLORS: [ExpenseCategory, string][] = [['food', '#1D9E75'], ['transport', '#534AB7'], ['leisure', '#BA7517'], ['shopping', '#993556'], ['health', '#3B6D11'], ['housing', '#185FA5'], ['subscriptions', '#D85A30'], ['debt', '#C0392B'], ['bank', '#1A6EA8'], ['other', '#5F5E5A']]
 const FIXED_FREQS = [{ id: 'weekly' as const, label: 'Semanal' }, { id: 'fortnightly' as const, label: 'Quincenal' }, { id: 'monthly' as const, label: 'Mensual' }]
-type ExpType = 'daily' | 'fixed' | 'savings'
 
 export default function GastosPage() {
-  const { expenses, addExpense, deleteExpense, recurringExpenses,
-    addRecurringExpense, updateRecurringExpense, deleteRecurringExpense, fixedExpenseAllocations,
-    addFixedAllocation, deleteFixedAllocation, savingsGoals, savingsWithdrawals, addSavingsWithdrawal } = usePocketFlow()
+  const { expenses, addExpense, deleteExpense, weeklyFixedCosts, recurringExpenses,
+    addRecurringExpense, updateRecurringExpense, deleteRecurringExpense,
+    fixedExpenseAllocations, addFixedAllocation, deleteFixedAllocation } = usePocketFlow()
 
   const today = localToday()
   const todayStr = today
   const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
   const [tab, setTab] = useState<'daily' | 'fixed'>('daily')
-
-  // Entry form
-  const [expType, setExpType] = useState<ExpType>('daily')
-  const [amount, setAmount] = useState('')
-  const [selCat, setSelCat] = useState<ExpenseCategory>('food')
-  const [note, setNote] = useState('')
-  const [expDate, setExpDate] = useState(today)
-  const [selectedEnv, setSelectedEnv] = useState<string | null>(null)
-  const [selectedSav, setSelectedSav] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const amtRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { amtRef.current?.focus() }, [])
-
-  // Undo
-  const [undoItem, setUndoItem] = useState<{ label: string; restore: () => Promise<void> } | null>(null)
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  function scheduleUndo(label: string, restore: () => Promise<void>) {
-    setUndoItem({ label, restore })
-    if (undoTimer.current) clearTimeout(undoTimer.current)
-    undoTimer.current = setTimeout(() => setUndoItem(null), 5000)
-  }
 
   // Search/filter
   const [query, setQuery] = useState('')
@@ -93,6 +65,13 @@ export default function GastosPage() {
   const [historialFixedId, setHistorialFixedId] = useState<string | null>(null)
   const activeFixed = recurringExpenses.filter(e => e.is_active)
 
+  // Undo
+  const [undoItem, setUndoItem] = useState<{ label: string; restore: () => Promise<void> } | null>(null)
+  function scheduleUndo(label: string, restore: () => Promise<void>) {
+    setUndoItem({ label, restore })
+    setTimeout(() => setUndoItem(null), 5000)
+  }
+
   const expGroups = useMemo(() => {
     const q = query.trim().toLowerCase()
     const map = new Map<string, typeof expenses>()
@@ -106,150 +85,19 @@ export default function GastosPage() {
       map.get(e.expense_date)!.push(e)
     }
     return Array.from(map.keys()).sort((a, b) => b.localeCompare(a)).map(date => ({
-      date,
-      label: date === todayStr ? 'HOY' : date === yesterdayStr ? 'AYER' : fmtDay(date).toUpperCase(),
+      date, label: date === todayStr ? 'HOY' : date === yesterdayStr ? 'AYER' : fmtDay(date).toUpperCase(),
       items: map.get(date)!,
     }))
   }, [expenses, query, filterCat, dateFrom, dateTo, todayStr, yesterdayStr])
 
-  async function save() {
-    const amt = parseFloat(amount)
-    if (!amt || amt <= 0) return
-    setSaving(true); setSaveError(null)
-    try {
-      if (expType === 'daily') {
-        const exp = await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
-        scheduleUndo(`"${exp.name}" eliminado`, async () => { await deleteExpense(exp.id) })
-        setAmount(''); setNote('')
-      } else if (expType === 'fixed') {
-        if (!selectedEnv) { setSaveError('Seleccioná un sobre'); setSaving(false); return }
-        await addFixedAllocation(selectedEnv, amt, expDate, undefined, 'withdrawal')
-        setAmount(''); setSelectedEnv(null)
-      } else {
-        if (!selectedSav) { setSaveError('Seleccioná un sobre'); setSaving(false); return }
-        await addSavingsWithdrawal(selectedSav, amt, undefined, expDate)
-        setAmount(''); setSelectedSav(null)
-      }
-      setExpDate(today); setSaveError(null)
-    } catch (e: any) {
-      setSaveError(e?.message || 'Error al guardar')
-    } finally {
-      setSaving(false); amtRef.current?.focus()
-    }
-  }
-
-  const typeColor = expType === 'daily' ? 'var(--blue)' : expType === 'fixed' ? 'var(--red)' : 'var(--green)'
-
   return (<>
     <SectionHeader title="Gastos" subtitle={format(new Date(), "EEEE d 'de' MMMM", { locale: es })} />
 
-    {/* ── FORMULARIO UNIFICADO ── */}
-    <div style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--border)', flexShrink: 0 }}>
-      {/* Tipo */}
-      <div style={{ display: 'flex', background: 'var(--bg2)', borderRadius: 10, padding: 3, marginBottom: 12 }}>
-        {([['daily', 'Diario'], ['fixed', 'Fijo'], ['savings', 'Ahorro']] as const).map(([t, lbl]) => (
-          <button key={t} onClick={() => { setExpType(t); setSaveError(null) }}
-            style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-              background: expType === t ? (t === 'daily' ? 'var(--blue)' : t === 'fixed' ? 'var(--red)' : 'var(--green)') : 'transparent',
-              color: expType === t ? '#fff' : 'var(--text3)', boxShadow: expType === t ? '0 1px 4px rgba(0,0,0,.15)' : 'none' }}>
-            {lbl}
-          </button>
-        ))}
-      </div>
-
-      {/* Monto */}
-      <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 22, fontWeight: 600, color: 'var(--text3)' }}>$</span>
-        <input ref={amtRef} type="number" inputMode="decimal" value={amount}
-          onChange={e => setAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
-          placeholder="0.00"
-          style={{ flex: 1, fontSize: 28, fontWeight: 600, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none', borderBottom: `2px solid ${typeColor}`, paddingBottom: 2 }} />
-      </div>
-
-      {/* Campos según tipo */}
-      {expType === 'daily' && (<>
-        <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none', marginBottom: 10 }}>
-          {CATS.map(([id, label]) => { const on = selCat === id; return (
-            <button key={id} onClick={() => setSelCat(id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? CAT_COLORS[id] : 'transparent', color: on ? '#fff' : 'var(--text3)', border: on ? `1.5px solid ${CAT_COLORS[id]}` : '1px solid var(--border2)', fontWeight: on ? 500 : 400 }}>
-              <span>{CAT_ICONS[id]}</span>{label}
-            </button>
-          )})}
-        </div>
-        <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Nombre o nota (opcional)…"
-          style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, color: 'var(--text2)', border: 'none', background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', outline: 'none', marginBottom: 10 }} />
-      </>)}
-
-      {expType === 'fixed' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, maxHeight: 160, overflowY: 'auto' }}>
-          {activeFixed.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Sin sobres fijos. Creá uno en la pestaña Fijos.</div>}
-          {activeFixed.map(env => {
-            const { name: eName } = decFixed(env.name)
-            const envCol = CAT_COLORS[env.category]
-            const pr = periodRange(env.frequency)
-            const allocs = fixedExpenseAllocations.filter(a => a.recurring_expense_id === env.id && a.allocated_at >= pr.start && a.allocated_at <= pr.end)
-            const avail = allocs.filter(a => a.type !== 'withdrawal').reduce((s, a) => s + a.amount, 0) - allocs.filter(a => a.type === 'withdrawal').reduce((s, a) => s + a.amount, 0)
-            const on = selectedEnv === env.id
-            return (
-              <button key={env.id} onClick={() => setSelectedEnv(on ? null : env.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: on ? envCol + '18' : 'var(--bg2)', border: on ? `2px solid ${envCol}` : `1.5px solid ${envCol}33` }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: envCol + '33', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: envCol, flexShrink: 0 }}>F</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Disponible: <span style={{ color: avail >= 0 ? envCol : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
-                </div>
-                {on && <span style={{ color: envCol }}>✓</span>}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {expType === 'savings' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, maxHeight: 160, overflowY: 'auto' }}>
-          {savingsGoals.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Sin sobres de ahorro. Creá uno en Ahorros.</div>}
-          {savingsGoals.map(goal => {
-            const { name: gName } = decSavings(goal.name)
-            const totalW = savingsWithdrawals.filter(w => w.savings_goal_id === goal.id).reduce((s, w) => s + w.amount, 0)
-            const avail = goal.current_amount - totalW
-            const on = selectedSav === goal.id
-            return (
-              <button key={goal.id} onClick={() => setSelectedSav(on ? null : goal.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: on ? goal.color + '18' : 'var(--bg2)', border: on ? `2px solid ${goal.color}` : `1.5px solid ${goal.color}33` }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: goal.color + '33', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>💰</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{gName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Disponible: <span style={{ color: avail >= 0 ? goal.color : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
-                </div>
-                {on && <span style={{ color: goal.color }}>✓</span>}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Fecha + Guardar */}
-      <div className="flex gap-2 items-center">
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--blue)', background: 'var(--bg2)', borderRadius: 8, padding: '9px 10px', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
-            📅 {format(parseISO(expDate), 'd MMM', { locale: es })}
-          </div>
-          <input type="date" value={expDate} onChange={e => setExpDate(e.target.value || today)}
-            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
-        </div>
-        <button onClick={save} disabled={saving || !amount}
-          style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: typeColor, color: '#fff', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer', opacity: (!amount || saving) ? .5 : 1 }}>
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
-      </div>
-      {saveError && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 8 }}>⚠️ {saveError}</div>}
-    </div>
-
-    {/* ── TABS ── */}
+    {/* Tabs */}
     <div style={{ display: 'flex', background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', padding: 3, margin: '8px 16px 0', flexShrink: 0 }}>
       {([['daily', 'Diarios'], ['fixed', 'Fijos']] as const).map(([id, lbl]) => (
         <button key={id} onClick={() => setTab(id)}
-          style={{ flex: 1, padding: 7, borderRadius: 6, fontSize: 12, fontWeight: 500, border: 'none', cursor: 'pointer', background: tab === id ? 'var(--bg)' : 'transparent', color: tab === id ? 'var(--text1)' : 'var(--text2)', boxShadow: tab === id ? '0 1px 3px rgba(0,0,0,.1)' : 'none' }}>
+          style={{ flex: 1, padding: 8, borderRadius: 6, fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', background: tab === id ? 'var(--bg)' : 'transparent', color: tab === id ? 'var(--text1)' : 'var(--text2)', boxShadow: tab === id ? '0 1px 3px rgba(0,0,0,.1)' : 'none' }}>
           {lbl}
         </button>
       ))}
@@ -263,9 +111,7 @@ export default function GastosPage() {
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', pointerEvents: 'none' }} />
             <input type="text" placeholder="Buscar gasto…" value={query} onChange={e => setQuery(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', padding: '8px 28px 8px 30px', fontSize: 13, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)', outline: 'none' }} />
-            {query !== '' && (
-              <button onClick={() => setQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex' }}><X size={13} /></button>
-            )}
+            {query !== '' && <button onClick={() => setQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex' }}><X size={13} /></button>}
           </div>
           <button onClick={() => setShowFilters(v => !v)}
             style={{ padding: '0 12px', borderRadius: 10, border: '1px solid var(--border)', background: showFilters || filterCat || dateFrom || dateTo ? 'var(--blue)' : 'var(--bg2)', color: showFilters || filterCat || dateFrom || dateTo ? '#fff' : 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -311,7 +157,7 @@ export default function GastosPage() {
       </div>
       <div className="scroll-area" style={{ paddingLeft: 16, paddingRight: 16 }}>
         <div className="flex items-center justify-between" style={{ paddingTop: 12, paddingBottom: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Historial</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Historial completo</span>
           <Link href="/gastos/historial" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
             <History size={12} /> Ver todo
           </Link>
@@ -346,7 +192,10 @@ export default function GastosPage() {
     {tab === 'fixed' && <>
       <div className="scroll-area" style={{ paddingTop: 12, paddingLeft: 16, paddingRight: 16 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Sobres de gasto fijo</span>
+          <div>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Sobres de gasto fijo</span>
+            <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>sem: {formatAUD(weeklyFixedCosts())}</span>
+          </div>
           <button onClick={() => setShowNewFixed(true)} style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg2)', border: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <Plus size={14} color="var(--text2)" strokeWidth={1.7} />
           </button>
@@ -392,7 +241,7 @@ export default function GastosPage() {
               </div>
               <ProgressBar percent={Math.max(0, pct)} color={isOver ? 'var(--red)' : color} height={6} />
               <div style={{ marginTop: 8, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{FREQ_LABELS[e.frequency]} · Planificado: <strong style={{ color: 'var(--text2)' }}>{formatAUD(e.amount)}</strong></div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Planificado: <strong style={{ color: 'var(--text2)' }}>{formatAUD(e.amount)}</strong> · {e.frequency === 'weekly' ? 'Semanal' : e.frequency === 'fortnightly' ? 'Quincenal' : 'Mensual'}</div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>Fondos: <span style={{ color: pFunded > 0 ? color : 'var(--text3)', fontWeight: pFunded > 0 ? 600 : 400 }}>{formatAUD(pFunded)}</span></span>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>Gastado: <span style={{ color: pSpent > 0 ? 'var(--red)' : 'var(--text3)', fontWeight: pSpent > 0 ? 600 : 400 }}>−{formatAUD(pSpent)}</span></span>
@@ -475,7 +324,7 @@ export default function GastosPage() {
     {undoItem && (
       <div style={{ position: 'fixed', bottom: 88, left: '50%', transform: 'translateX(-50%)', background: 'var(--text1)', color: 'var(--bg)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16, zIndex: 150, fontSize: 13, maxWidth: 380, width: 'calc(100% - 32px)', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }}>
         <span style={{ flex: 1 }}>{undoItem.label}</span>
-        <button onClick={async () => { if (undoTimer.current) clearTimeout(undoTimer.current); await undoItem.restore(); setUndoItem(null) }} style={{ color: '#4ea8ff', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, padding: 0 }}>Deshacer</button>
+        <button onClick={async () => { await undoItem.restore(); setUndoItem(null) }} style={{ color: '#4ea8ff', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, padding: 0 }}>Deshacer</button>
       </div>
     )}
     <BottomNav />
