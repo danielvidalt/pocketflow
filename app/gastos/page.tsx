@@ -8,7 +8,7 @@ import BottomNav from '@/components/BottomNav'
 import { parseISO, format, subDays } from 'date-fns'
 import { getSettings } from '@/lib/settings'
 import { es } from 'date-fns/locale'
-import { Plus, X, MoreHorizontal } from 'lucide-react'
+import { Plus, X, MoreHorizontal, Search, SlidersHorizontal } from 'lucide-react'
 
 // Siempre usa hora LOCAL (evita el bug UTC vs hora australiana)
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
@@ -113,14 +113,28 @@ export default function GastosPage() {
   )
   const weekRemaining = weekCollected - weekSpent
 
+  // ── Buscador y filtros ─────────────────────────────────────────────────────
+  const [query, setQuery] = useState('')
+  const [filterCat, setFilterCat] = useState<ExpenseCategory | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const hasFilters = query.trim() !== '' || filterCat !== null || dateFrom !== '' || dateTo !== ''
+  function clearFilters() { setQuery(''); setFilterCat(null); setDateFrom(''); setDateTo('') }
+
   // Historial completo de gastos (todos, no solo 7 días), agrupado por fecha local
   // Los registros de ahorro (Ahorro: X) se excluyen del historial diario — aparecen en su propia pestaña
   const expGroups = useMemo(() => {
     const todayStr = localToday()
     const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+    const q = query.trim().toLowerCase()
     const map = new Map<string, typeof expenses>()
     for (const e of expenses) {
       if (e.name.startsWith('Ahorro: ')) continue
+      if (q && !e.name.toLowerCase().includes(q) && !(e.note ?? '').toLowerCase().includes(q)) continue
+      if (filterCat && e.category !== filterCat) continue
+      if (dateFrom && e.expense_date < dateFrom) continue
+      if (dateTo && e.expense_date > dateTo) continue
       if (!map.has(e.expense_date)) map.set(e.expense_date, [])
       map.get(e.expense_date)!.push(e)
     }
@@ -131,7 +145,7 @@ export default function GastosPage() {
         label: date === todayStr ? 'HOY' : date === yesterdayStr ? 'AYER' : fmtDay(date).toUpperCase(),
         items: map.get(date)!,
       }))
-  }, [expenses])
+  }, [expenses, query, filterCat, dateFrom, dateTo])
 
   // Ingresos de esta semana
   const weekIncomes = useMemo(() =>
@@ -226,10 +240,95 @@ export default function GastosPage() {
         </button>
       </div>
 
+      {/* Buscador y filtros */}
+      <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', pointerEvents: 'none' }} />
+            <input
+              type="text"
+              placeholder="Buscar gasto…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 28px 8px 30px', fontSize: 13, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)', outline: 'none' }}
+            />
+            {query !== '' && (
+              <button onClick={() => setQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 2, display: 'flex' }}>
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            style={{ padding: '0 12px', borderRadius: 10, border: '1px solid var(--border)', background: showFilters || filterCat || dateFrom || dateTo ? 'var(--blue)' : 'var(--bg2)', color: showFilters || filterCat || dateFrom || dateTo ? '#fff' : 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+            <SlidersHorizontal size={14} />
+            <span style={{ fontSize: 12, fontWeight: 500 }}>Filtros</span>
+          </button>
+        </div>
+
+        {showFilters && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Chips de categoría */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {CATS.map(([cat, label]) => {
+                const active = filterCat === cat
+                return (
+                  <button key={cat} onClick={() => setFilterCat(active ? null : cat)}
+                    style={{ padding: '5px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 500, background: active ? CAT_COLORS[cat] : 'var(--bg3)', color: active ? '#fff' : 'var(--text2)' }}>
+                    {ICONS[cat]} {label}
+                  </button>
+                )
+              })}
+            </div>
+            {/* Rango de fechas */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Desde</div>
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg2)', color: dateFrom ? 'var(--text1)' : 'var(--text3)' }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Hasta</div>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg2)', color: dateTo ? 'var(--text1)' : 'var(--text3)' }} />
+              </div>
+            </div>
+            {/* Atajos */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { label: 'Hoy', from: today, to: today },
+                { label: 'Ayer', from: format(subDays(new Date(), 1), 'yyyy-MM-dd'), to: format(subDays(new Date(), 1), 'yyyy-MM-dd') },
+                { label: 'Últimos 7 días', from: format(subDays(new Date(), 6), 'yyyy-MM-dd'), to: today },
+                { label: 'Últimos 30 días', from: format(subDays(new Date(), 29), 'yyyy-MM-dd'), to: today },
+              ].map(s => {
+                const active = dateFrom === s.from && dateTo === s.to
+                return (
+                  <button key={s.label}
+                    onClick={() => { if (active) { setDateFrom(''); setDateTo('') } else { setDateFrom(s.from); setDateTo(s.to) } }}
+                    style={{ padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 500, background: active ? 'var(--blue)' : 'var(--bg3)', color: active ? '#fff' : 'var(--text2)' }}>
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {hasFilters && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text3)', flex: 1 }}>
+              {[query.trim() && `"${query.trim()}"`, filterCat && CAT_LABELS[filterCat], (dateFrom || dateTo) && [dateFrom && `desde ${dateFrom}`, dateTo && `hasta ${dateTo}`].filter(Boolean).join(' ')].filter(Boolean).join(' · ')}
+            </span>
+            <button onClick={clearFilters} style={{ fontSize: 11, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+              Limpiar
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Historial */}
       <div className="scroll-area" style={{ paddingLeft: 16, paddingRight: 16 }}>
-        {/* Gastos — todos, sin límite de días */}
-        {expGroups.length === 0 && <EmptyState message="Sin gastos registrados" />}
+        {expGroups.length === 0 && <EmptyState message={hasFilters ? 'Sin resultados' : 'Sin gastos registrados'} />}
         {expGroups.map(({ label, items }) => {
           const total = items.reduce((s, e) => s + e.amount, 0)
           return (
