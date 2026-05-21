@@ -70,12 +70,16 @@ export const usePocketFlow = create<State>((set,get) => ({
       db.from('savings_goals').select('*').order('created_at'),
       db.from('fixed_expense_allocations').select('*').order('allocated_at',{ascending:false}).limit(500),
     ])
-    // savings_withdrawals se carga por separado — la tabla puede no existir todavía
-    const sw = await db.from('savings_withdrawals').select('*').order('withdrawn_at',{ascending:false}).limit(500).catch(()=>({data:[]}))
+    // savings_withdrawals es opcional: la tabla puede no existir si no se corrió la migración
+    let savingsWithdrawalsData: any[] = []
+    try {
+      const { data } = await db.from('savings_withdrawals').select('*').order('withdrawn_at',{ascending:false}).limit(500)
+      savingsWithdrawalsData = data || []
+    } catch {}
     set({
       incomeSources:s.data||[], incomeEntries:e.data||[], expenses:ex.data||[],
       recurringExpenses:r.data||[], fixedExpenseAllocations:fa.data||[], debtPockets:d.data||[], savingsGoals:g.data||[],
-      savingsWithdrawals:(sw as any).data||[],
+      savingsWithdrawals:savingsWithdrawalsData,
       loading:false,
     })
   },
