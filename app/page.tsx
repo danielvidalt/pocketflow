@@ -12,9 +12,10 @@ import { format, isToday, parseISO, isWithinInterval, startOfMonth, endOfMonth }
 import { es } from 'date-fns/locale'
 import { getSettings, saveSettings } from '@/lib/settings'
 import type { AppSettings } from '@/lib/settings'
+import { useTheme } from '@/components/ThemeProvider'
 
 type Period = 'week' | 'fortnight' | 'month'
-const DEFAULTS: AppSettings = { fortnightDir: 'next', showMonth: false, payDayStart: 1 }
+const DEFAULTS: AppSettings = { fortnightDir: 'next', showMonth: false, payDayStart: 1, theme: 'dark' }
 
 // Días en orden Lun→Dom para el selector (convención JS: 0=Dom, 1=Lun, …, 6=Sáb)
 const PAY_DAYS: [number, string][] = [[1,'Lun'],[2,'Mar'],[3,'Mié'],[4,'Jue'],[5,'Vie'],[6,'Sáb'],[0,'Dom']]
@@ -32,6 +33,7 @@ function getPayWeekStart(from: Date, startDay: number): Date {
 export default function HomePage(){
   const {fetchAll,fetchExchangeRates,incomeSources,incomeEntries,expenses,fixedExpenseAllocations,recurringExpenses,savingsGoals}=usePocketFlow()
   const router=useRouter()
+  const { theme, setTheme } = useTheme()
   const [checking,setChecking]=useState(true)
   const [period,setPeriod]=useState<Period>('week')
   const [settings,setSettings]=useState<AppSettings>(DEFAULTS)
@@ -298,6 +300,29 @@ export default function HomePage(){
               <span style={{position:'absolute',top:2,left:pending.showMonth?20:2,width:22,height:22,
                 borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
             </button>
+          </div>
+
+          <div className="flex items-center justify-between" style={{paddingTop:16,borderTop:'0.5px solid var(--border)',marginBottom:24}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:500,color:'var(--text1)'}}>Apariencia</div>
+              <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{theme==='dark'?'Modo oscuro':'Modo claro'}</div>
+            </div>
+            <div style={{display:'flex',background:'var(--bg2)',borderRadius:8,padding:3,gap:3}}>
+              <button onClick={()=>setTheme('dark')}
+                style={{padding:'6px 12px',borderRadius:6,fontSize:11,fontWeight:500,border:'none',cursor:'pointer',
+                  background:theme==='dark'?'var(--bg)':'transparent',
+                  color:theme==='dark'?'var(--text1)':'var(--text3)',
+                  boxShadow:theme==='dark'?'0 1px 3px rgba(0,0,0,.15)':'none'}}>
+                Oscuro
+              </button>
+              <button onClick={()=>setTheme('light')}
+                style={{padding:'6px 12px',borderRadius:6,fontSize:11,fontWeight:500,border:'none',cursor:'pointer',
+                  background:theme==='light'?'var(--bg)':'transparent',
+                  color:theme==='light'?'var(--text1)':'var(--text3)',
+                  boxShadow:theme==='light'?'0 1px 3px rgba(0,0,0,.08)':'none'}}>
+                Claro
+              </button>
+            </div>
           </div>
 
           <button onClick={applySettings}
