@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage(){
@@ -41,9 +42,15 @@ export default function LoginPage(){
           style={{width:'100%',padding:'12px 14px',borderRadius:10,border:'0.5px solid var(--border2)',background:'var(--bg2)',color:'var(--text1)',fontSize:15,marginBottom:16,outline:'none'}}/>
         {error&&<div style={{fontSize:13,color:'var(--red)',marginBottom:12,textAlign:'center'}}>{error}</div>}
         <button onClick={handleLogin} disabled={loading||!email||!password}
-          style={{width:'100%',padding:14,borderRadius:10,background:'var(--blue)',color:'#fff',fontSize:15,fontWeight:600,border:'none',cursor:'pointer',opacity:(loading||!email||!password)?.5:1}}>
+          style={{width:'100%',padding:14,borderRadius:10,background:'var(--blue)',color:'#fff',fontSize:15,fontWeight:600,border:'none',cursor:'pointer',opacity:(loading||!email||!password)?.5:1,marginBottom:16}}>
           {loading?'Entrando…':'Entrar'}
         </button>
+        <div style={{textAlign:'center',fontSize:14,color:'var(--text3)'}}>
+          ¿No tenés cuenta?{' '}
+          <Link href="/registro" style={{color:'var(--blue)',fontWeight:500,textDecoration:'none'}}>
+            Registrate
+          </Link>
+        </div>
       </div>
     </div>
   )

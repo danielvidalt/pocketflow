@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Calendar, LogOut, Settings, X } from 'lucide-react'
 import { usePocketFlow } from '@/lib/store'
-import { formatAUD, weeklyEquivalent } from '@/lib/types'
+import { formatAUD, weeklyEquivalent, FREQ_DIVISORS } from '@/lib/types'
 import { PillTag, BtnGhost, SectionHeader } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { getClient } from '@/lib/supabase'
@@ -30,7 +30,7 @@ function getPayWeekStart(from: Date, startDay: number): Date {
 }
 
 export default function HomePage(){
-  const {fetchAll,fetchExchangeRates,incomeSources,incomeEntries,expenses,fixedExpenseAllocations}=usePocketFlow()
+  const {fetchAll,fetchExchangeRates,incomeSources,incomeEntries,expenses,fixedExpenseAllocations,recurringExpenses,savingsGoals}=usePocketFlow()
   const router=useRouter()
   const [checking,setChecking]=useState(true)
   const [period,setPeriod]=useState<Period>('week')
@@ -104,9 +104,41 @@ export default function HomePage(){
 
   const periodSpent=periodExps.reduce((s,e)=>s+e.amount,0)
   const {start:_ps,end:_pe}=getPeriodRange()
+  const psStr=format(_ps,'yyyy-MM-dd')
+  const peStr=format(_pe,'yyyy-MM-dd')
   const actualFixedSpent=fixedExpenseAllocations
-    .filter(a=>a.type==='withdrawal'&&a.allocated_at>=format(_ps,'yyyy-MM-dd')&&a.allocated_at<=format(_pe,'yyyy-MM-dd'))
+    .filter(a=>a.type==='withdrawal'&&a.allocated_at>=psStr&&a.allocated_at<=peStr)
     .reduce((s,a)=>s+a.amount,0)
+  // Gastos diarios ya realizados (excluye contribuciones a ahorros)
+  const gastadoRegularPeriod=useMemo(()=>
+    periodExps.filter(e=>!e.name.startsWith('Ahorro: ')).reduce((s,e)=>s+e.amount,0),
+    [periodExps])
+  // Sobres fijos: max(monto planificado del período, depósitos reales en el período)
+  const totalFixedCommitted=useMemo(()=>
+    recurringExpenses.filter(e=>e.is_active).reduce((total,e)=>{
+      const planned=e.amount*(multiplier/FREQ_DIVISORS[e.frequency])
+      const deposited=fixedExpenseAllocations
+        .filter(a=>a.recurring_expense_id===e.id&&a.type!=='withdrawal'&&a.allocated_at>=psStr&&a.allocated_at<=peStr)
+        .reduce((s,a)=>s+a.amount,0)
+      return total+Math.max(planned,deposited)
+    },0),
+    [recurringExpenses,fixedExpenseAllocations,period,settings.fortnightDir,settings.payDayStart])
+  // Sobres de ahorro: max(contribución planificada del período, ahorros reales en el período)
+  const totalSavingsCommitted=useMemo(()=>{
+    const SEP='\x1F'
+    return savingsGoals.reduce((total,g)=>{
+      const i=g.name.indexOf(SEP)
+      const type=i===-1?'$' as const:g.name[i+1] as '%'|'$'
+      const value=i===-1?0:(parseFloat(g.name.slice(i+2))||0)
+      const freq=g.frequency||'monthly'
+      const freqDiv=FREQ_DIVISORS[freq]||4.33
+      const planned=type==='%'?weeklyTotal*multiplier*value/100:value*(multiplier/freqDiv)
+      const goalName=i===-1?g.name:g.name.slice(0,i)
+      const deposited=periodExps.filter(e=>e.name===`Ahorro: ${goalName}`).reduce((s,e)=>s+e.amount,0)
+      return total+Math.max(planned,deposited)
+    },0)
+  },[savingsGoals,periodExps,weeklyTotal,multiplier])
+  const totalAGastar=collectedThisPeriod-gastadoRegularPeriod-totalFixedCommitted-totalSavingsCommitted
   const remaining=collectedThisPeriod-periodSpent-actualFixedSpent
 
   const todayExps=useMemo(()=>expenses.filter(e=>isToday(parseISO(e.expense_date))),[expenses])
@@ -151,10 +183,14 @@ export default function HomePage(){
 
       <div style={{background:'var(--blue)',borderRadius:'var(--radius)',padding:18,marginBottom:10}}>
         <div style={{fontSize:11,color:'rgba(255,255,255,.7)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:4}}>
-          {remaining>=0?'Total Disponible':'Gastaste de más'}
+          Total a Gastar
         </div>
-        <div style={{fontSize:44,fontWeight:700,color:'#fff',letterSpacing:-1,lineHeight:1}}>{formatAUD(Math.abs(remaining))}</div>
-        <div style={{height:5,background:'rgba(255,255,255,.2)',borderRadius:3,marginTop:14,overflow:'hidden'}}>
+        <div style={{fontSize:44,fontWeight:700,color:'#fff',letterSpacing:-1,lineHeight:1}}>{formatAUD(Math.max(0,totalAGastar))}</div>
+        <div style={{fontSize:12,color:'rgba(255,255,255,.7)',marginTop:8,display:'flex',gap:12}}>
+          <span>Disponible: <span style={{fontWeight:600,color:remaining>=0?'rgba(255,255,255,.95)':'rgba(255,180,180,1)'}}>{formatAUD(remaining)}</span></span>
+          {totalSavingsCommitted>0&&<span>Ahorros reservados: <span style={{fontWeight:600,color:'rgba(255,255,255,.9)'}}>{formatAUD(totalSavingsCommitted)}</span></span>}
+        </div>
+        <div style={{height:5,background:'rgba(255,255,255,.2)',borderRadius:3,marginTop:12,overflow:'hidden'}}>
           <div style={{height:'100%',background:'#fff',borderRadius:3,width:`${Math.min(100,collectedPct)}%`,transition:'width .4s'}}/>
         </div>
         <div className="flex justify-between mt-1" style={{marginBottom:14}}>

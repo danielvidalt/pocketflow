@@ -2,7 +2,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePocketFlow } from '@/lib/store'
-import { formatAUD, CAT_COLORS, CAT_LABELS } from '@/lib/types'
+import { formatAUD, CAT_COLORS, CAT_LABELS, FREQ_DIVISORS, weeklyEquivalent } from '@/lib/types'
 import type { ExpenseCategory } from '@/lib/types'
 import { SectionHeader, ProgressBar, MetricCard } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
@@ -40,7 +40,7 @@ function decName(raw: string) { const i = raw.indexOf('\x1F'); return i === -1 ?
 
 export default function ResumenPage() {
   const { incomeEntries, expenses, debtPockets, savingsGoals, savingsWithdrawals,
-    exchangeRates, deleteAllData, recurringExpenses, fixedExpenseAllocations } = usePocketFlow()
+    exchangeRates, deleteAllData, recurringExpenses, fixedExpenseAllocations, incomeSources } = usePocketFlow()
   const router = useRouter()
   const [period, setPeriod] = useState<'week'|'fortnight'|'month'>('week')
   const [showDeleteAll, setShowDeleteAll] = useState(false)
@@ -69,6 +69,34 @@ export default function ResumenPage() {
     .filter(a => a.type === 'withdrawal' && a.allocated_at >= rangeStartStr && a.allocated_at <= rangeEndStr)
     .reduce((s, a) => s + a.amount, 0)
   const gastadoTotal = gastadoRegular + gastadoAhorros
+  const multiplier = period === 'week' ? 1 : period === 'fortnight' ? 2 : 4.33
+  const weeklyTotal = incomeSources.filter(s => s.is_active).reduce((sum, s) => sum + weeklyEquivalent(s), 0)
+  // Sobres fijos: max(monto planificado del período, depósitos reales en el período)
+  const totalFixedCommitted = useMemo(() =>
+    recurringExpenses.filter(e => e.is_active).reduce((total, e) => {
+      const planned = e.amount * (multiplier / FREQ_DIVISORS[e.frequency])
+      const deposited = fixedExpenseAllocations
+        .filter(a => a.recurring_expense_id === e.id && a.type !== 'withdrawal' && a.allocated_at >= rangeStartStr && a.allocated_at <= rangeEndStr)
+        .reduce((s, a) => s + a.amount, 0)
+      return total + Math.max(planned, deposited)
+    }, 0),
+    [recurringExpenses, fixedExpenseAllocations, period])
+  // Sobres de ahorro: max(contribución planificada del período, ahorros reales en el período)
+  const totalSavingsCommitted = useMemo(() => {
+    const SEP = '\x1F'
+    return savingsGoals.reduce((total, g) => {
+      const i = g.name.indexOf(SEP)
+      const type = i === -1 ? '$' as const : g.name[i + 1] as '%' | '$'
+      const value = i === -1 ? 0 : (parseFloat(g.name.slice(i + 2)) || 0)
+      const freq = g.frequency || 'monthly'
+      const freqDiv = FREQ_DIVISORS[freq] || 4.33
+      const planned = type === '%' ? weeklyTotal * multiplier * value / 100 : value * (multiplier / freqDiv)
+      const goalName = i === -1 ? g.name : g.name.slice(0, i)
+      const deposited = exps.filter(e => e.name === `Ahorro: ${goalName}`).reduce((s, e) => s + e.amount, 0)
+      return total + Math.max(planned, deposited)
+    }, 0)
+  }, [savingsGoals, exps, weeklyTotal, multiplier])
+  const totalAGastar = cobrado - gastadoRegular - totalFixedCommitted - totalSavingsCommitted
 
   const catDist = useMemo(() => {
     const m: Partial<Record<ExpenseCategory, number>> = {}
@@ -123,11 +151,20 @@ export default function ResumenPage() {
         ))}
       </div>
 
+      {/* Total a Gastar hero */}
+      <div style={{ background: 'var(--blue)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3 }}>Total a Gastar</div>
+        <div style={{ fontSize: 32, fontWeight: 700, color: '#fff', letterSpacing: -0.5, lineHeight: 1 }}>{formatAUD(Math.max(0, totalAGastar))}</div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.65)', marginTop: 6 }}>
+          Disponible tras gastos diarios: <span style={{ fontWeight: 600, color: cobrado - gastadoTotal - gastadoFijoReal >= 0 ? 'rgba(255,255,255,.9)' : 'rgba(255,180,180,1)' }}>{formatAUD(cobrado - gastadoTotal - gastadoFijoReal)}</span>
+        </div>
+      </div>
+
       {/* Métricas */}
       <div className="grid grid-cols-3 gap-2" style={{ marginBottom: 12 }}>
         <MetricCard label="Ingresos" value={formatAUD(cobrado)} valueColor="var(--green)" />
         <MetricCard label="Gastado" value={formatAUD(gastadoRegular)} valueColor="var(--red)" />
-        <MetricCard label="Disponible" value={formatAUD(Math.max(0, cobrado - gastadoTotal - gastadoFijoReal))} valueColor="var(--blue)" />
+        <MetricCard label="Ahorros" value={formatAUD(gastadoAhorros)} valueColor="var(--blue)" />
       </div>
 
       {/* ── GASTOS DIARIOS ── */}
