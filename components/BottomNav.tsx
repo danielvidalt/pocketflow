@@ -18,21 +18,20 @@ export default function BottomNav() {
     <nav className="bottom-nav">
       {TABS.map(({ href, label, Icon }) => {
         const active = path === href || (href !== '/' && path.startsWith(href))
-        const isRegister = href === '/registrar'
         return (
           <Link
             key={href}
             href={href}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              flex: 1, gap: 2, paddingTop: isRegister ? 4 : 6, paddingBottom: 4,
-              color: active ? (isRegister ? '#fff' : 'var(--blue)') : isRegister ? 'rgba(255,255,255,.85)' : 'var(--text3)',
+              flex: 1, gap: 2, paddingTop: 5, paddingBottom: 4,
+              color: active ? 'var(--blue)' : 'var(--text3)',
               textDecoration: 'none', minWidth: 0, overflow: 'hidden',
-              background: isRegister ? (active ? '#1a7fd4' : 'var(--blue)') : 'transparent',
-              borderRadius: isRegister ? 14 : 0,
-              margin: isRegister ? '4px 2px' : 0,
+              background: active ? 'rgba(59,130,246,.1)' : 'transparent',
+              borderRadius: 12,
+              margin: '3px 2px',
             }}>
-            <Icon size={isRegister ? 20 : 19} strokeWidth={active ? 2 : 1.7} />
+            <Icon size={19} strokeWidth={active ? 2 : 1.7} />
             <span style={{
               fontSize: 9, fontWeight: active ? 600 : 400,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
