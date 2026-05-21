@@ -33,7 +33,7 @@ interface State {
   updateSavingsGoal:(id:string,d:Partial<Omit<SavingsGoal,'id'|'user_id'>>)=>Promise<void>
   deleteSavingsGoal:(id:string)=>Promise<void>
   addToSavings:(id:string,amount:number,date?:string)=>Promise<void>
-  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string,expenseId?:string)=>Promise<void>
+  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string,expenseId?:string,type?:'deposit'|'withdrawal')=>Promise<void>
   deleteFixedAllocation:(id:string)=>Promise<void>
   addSavingsWithdrawal:(goalId:string,amount:number,expenseId?:string,date?:string)=>Promise<void>
   deleteSavingsWithdrawal:(id:string)=>Promise<void>
@@ -242,11 +242,11 @@ export const usePocketFlow = create<State>((set,get) => ({
     }))
   },
 
-  addFixedAllocation: async (recurringExpenseId, amount, date?, expenseId?) => {
+  addFixedAllocation: async (recurringExpenseId, amount, date?, expenseId?, type = 'deposit') => {
     const user = await getUser(); const db = getClient()
     const allocated_at = date || format(new Date(), 'yyyy-MM-dd')
     const { data:row, error } = await db.from('fixed_expense_allocations')
-      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at, expense_id: expenseId || null})
+      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at, expense_id: expenseId || null, type})
       .select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({fixedExpenseAllocations:[row,...s.fixedExpenseAllocations]}))
@@ -294,7 +294,7 @@ export const usePocketFlow = create<State>((set,get) => ({
         end = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd')
       }
       const allocated = fixedExpenseAllocations
-        .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= start && a.allocated_at <= end && !a.expense_id)
+        .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= start && a.allocated_at <= end && a.type !== 'withdrawal')
         .reduce((s, a) => s + a.amount, 0)
       return sum + allocated / FREQ_DIVISORS[e.frequency]
     }, 0)

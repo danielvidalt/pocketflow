@@ -179,11 +179,11 @@ export default function GastosPage() {
   const [showNewFixed, setShowNewFixed] = useState(false)
   const [editingFixed, setEditingFixed] = useState<RecurringExpense | null>(null)
   const [fixedMenuId, setFixedMenuId] = useState<string | null>(null)
-  const [expandedFixedId, setExpandedFixedId] = useState<string | null>(null)
   const [addingToFixed, setAddingToFixed] = useState<string|null>(null)
   const [fixedAddAmt, setFixedAddAmt] = useState('')
   const [fixedAddDate, setFixedAddDate] = useState(today)
   const [fixedSaving, setFixedSaving] = useState(false)
+  const [historialFixedId, setHistorialFixedId] = useState<string | null>(null)
   const weeklyFixed = weeklyFixedCosts()
   const showMonthFixed = getSettings().showMonth
 
@@ -411,90 +411,86 @@ export default function GastosPage() {
           const { name: eName } = decFixed(e.name)
           const color = CAT_COLORS[e.category]
           const period = periodRange(e.frequency)
-          const periodEntries = fixedExpenseAllocations
-            .filter(a => a.recurring_expense_id === e.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
-            .sort((a, b) => b.allocated_at.localeCompare(a.allocated_at))
-          const allEntries = fixedExpenseAllocations
-            .filter(a => a.recurring_expense_id === e.id)
-            .sort((a, b) => b.allocated_at.localeCompare(a.allocated_at))
-          const isExpandedFixed = expandedFixedId === e.id
-          const visibleEntries = isExpandedFixed ? allEntries : periodEntries
-          const allocated = periodEntries.reduce((s, a) => s + a.amount, 0)
-          const pct = e.amount > 0 ? (allocated / e.amount) * 100 : 0
-          const isOver = e.amount > 0 && allocated > e.amount
-          const funded = pct >= 100
+          const envAllocs = fixedExpenseAllocations.filter(a => a.recurring_expense_id === e.id)
+          const periodAllocs = envAllocs.filter(a => a.allocated_at >= period.start && a.allocated_at <= period.end)
+          const periodFunded = periodAllocs.filter(a => a.type !== 'withdrawal').reduce((s, a) => s + a.amount, 0)
+          const periodSpent  = periodAllocs.filter(a => a.type === 'withdrawal').reduce((s, a) => s + a.amount, 0)
+          const periodAvail  = periodFunded - periodSpent
+          const pct = e.amount > 0 ? Math.min(100, (periodAvail / e.amount) * 100) : 0
+          const isOver = periodAvail < 0
 
           return (
             <div key={e.id} className="card" style={{ marginBottom: 10, borderLeft: `3px solid ${isOver ? 'var(--red)' : color}` }}>
-              {/* Header con 3 puntitos */}
-              <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+
+              {/* Header */}
+              <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
                 <div className="flex items-center gap-2">
-                  <span style={{ fontSize: 16 }}>{ICONS[e.category]}</span>
+                  <span style={{ fontSize: 18 }}>{ICONS[e.category]}</span>
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text1)' }}>{eName}</span>
                 </div>
-                <div style={{ position: 'relative' }}>
-                  <button onClick={() => setFixedMenuId(fixedMenuId === e.id ? null : e.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '0 4px' }}>
-                    <MoreHorizontal size={16} />
-                  </button>
-                  {fixedMenuId === e.id && (
-                    <>
-                      <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setFixedMenuId(null)} />
-                      <div style={{ position: 'absolute', right: 0, top: 22, background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: 10, padding: '4px 0', zIndex: 100, minWidth: 130, boxShadow: '0 4px 16px rgba(0,0,0,.15)' }}>
-                        <button onClick={() => { setFixedMenuId(null); setEditingFixed(e) }}
-                          style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text1)' }}>Editar</button>
-                        <button onClick={() => { setFixedMenuId(null); deleteRecurringExpense(e.id) }}
-                          style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--red)' }}>Eliminar sobre</button>
-                      </div>
-                    </>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  {addingToFixed !== e.id && (
+                    <button onClick={() => { setAddingToFixed(e.id); setFixedAddDate(today) }}
+                      title="Agregar fondos"
+                      style={{ width: 28, height: 28, borderRadius: 8, background: color + '22', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Plus size={14} color={color} strokeWidth={2.5} />
+                    </button>
                   )}
-                </div>
-              </div>
-              <div className="flex items-baseline gap-2" style={{ marginBottom: 2 }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: isOver ? 'var(--red)' : 'var(--text1)' }}>{formatAUD(allocated)}</div>
-                <div style={{ fontSize: 13, color: 'var(--text3)' }}>de {formatAUD(e.amount)}</div>
-              </div>
-              <div style={{ fontSize: 11, marginBottom: 8, fontWeight: (funded || isOver) ? 600 : 400, color: isOver ? 'var(--red)' : funded ? 'var(--green)' : 'var(--text3)' }}>
-                {FREQ_LABELS[e.frequency]} · {isOver ? `Excede ${formatAUD(allocated - e.amount)}` : funded ? '✓ Completado' : `Faltan ${formatAUD(e.amount - allocated)}`}
-              </div>
-              <ProgressBar percent={Math.min(100, pct)} color={isOver ? 'var(--red)' : funded ? 'var(--green)' : color} height={8} />
-
-              {allEntries.length > 0 && (
-                <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid var(--border)' }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>
-                      {isExpandedFixed ? 'Todos los movimientos' : 'Este período'}
-                    </span>
-                    {allEntries.length > periodEntries.length && (
-                      <button onClick={() => setExpandedFixedId(isExpandedFixed ? null : e.id)}
-                        style={{ fontSize: 11, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
-                        {isExpandedFixed ? 'Ver menos' : `Ver todos (${allEntries.length})`}
-                      </button>
+                  <div style={{ position: 'relative' }}>
+                    <button onClick={() => setFixedMenuId(fixedMenuId === e.id ? null : e.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '0 4px' }}>
+                      <MoreHorizontal size={16} />
+                    </button>
+                    {fixedMenuId === e.id && (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setFixedMenuId(null)} />
+                        <div style={{ position: 'absolute', right: 0, top: 22, background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: 10, padding: '4px 0', zIndex: 100, minWidth: 130, boxShadow: '0 4px 16px rgba(0,0,0,.15)' }}>
+                          <button onClick={() => { setFixedMenuId(null); setEditingFixed(e) }}
+                            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text1)' }}>Editar</button>
+                          <button onClick={() => { setFixedMenuId(null); deleteRecurringExpense(e.id) }}
+                            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--red)' }}>Eliminar sobre</button>
+                        </div>
+                      </>
                     )}
                   </div>
-                  {visibleEntries.map(a => {
-                    const linkedExp = a.expense_id ? expenses.find(ex => ex.id === a.expense_id) : null
-                    return (
-                      <div key={a.id} className="flex items-center gap-2 py-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {linkedExp ? linkedExp.name : fmtDay(a.allocated_at)}
-                          </div>
-                          {linkedExp && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{fmtDay(a.allocated_at)}</div>}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: linkedExp ? 'var(--text2)' : color, whiteSpace: 'nowrap' }}>
-                          {linkedExp ? '' : '+'}{formatAUD(a.amount)}
-                        </span>
-                        <button onClick={() => { const snap = a; deleteFixedAllocation(snap.id); scheduleUndo('Depósito eliminado', async () => { await addFixedAllocation(snap.recurring_expense_id, snap.amount, snap.allocated_at, snap.expense_id ?? undefined) }) }}
-                          style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
-                      </div>
-                    )
-                  })}
                 </div>
-              )}
+              </div>
 
-              {addingToFixed === e.id ? (
+              {/* DISPONIBLE — métrica primaria */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1, color: isOver ? 'var(--red)' : periodFunded > 0 ? 'var(--text1)' : 'var(--text3)' }}>
+                  {formatAUD(periodAvail)}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Disponible</div>
+              </div>
+
+              <ProgressBar percent={Math.max(0, pct)} color={isOver ? 'var(--red)' : color} height={6} />
+
+              {/* Planificado + desglose */}
+              <div style={{ marginTop: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                  {FREQ_LABELS[e.frequency]} · Planificado: <strong style={{ color: 'var(--text2)' }}>{formatAUD(e.amount)}</strong>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                    Fondos: <span style={{ color: periodFunded > 0 ? color : 'var(--text3)', fontWeight: periodFunded > 0 ? 600 : 400 }}>{formatAUD(periodFunded)}</span>
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                    Gastado: <span style={{ color: periodSpent > 0 ? 'var(--red)' : 'var(--text3)', fontWeight: periodSpent > 0 ? 600 : 400 }}>−{formatAUD(periodSpent)}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Ver movimientos */}
+              <button onClick={() => setHistorialFixedId(historialFixedId === e.id ? null : e.id)}
+                style={{ width: '100%', padding: '8px 0', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>
+                Ver movimientos{envAllocs.length > 0 ? ` (${envAllocs.length})` : ''}
+              </button>
+
+              {/* Formulario de depósito */}
+              {addingToFixed === e.id && (
                 <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase' }}>Agregar fondos al sobre</div>
                   <div className="flex gap-2 items-center" style={{ marginBottom: 8 }}>
                     <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--text3)' }}>$</span>
                     <input type="number" inputMode="decimal" value={fixedAddAmt} autoFocus
@@ -512,11 +508,11 @@ export default function GastosPage() {
                     <button onClick={async () => {
                       const amt = parseFloat(fixedAddAmt); if (!amt || amt <= 0) return
                       setFixedSaving(true)
-                      await addFixedAllocation(e.id, amt, fixedAddDate)
+                      await addFixedAllocation(e.id, amt, fixedAddDate, undefined, 'deposit')
                       setFixedAddAmt(''); setFixedAddDate(today); setAddingToFixed(null); setFixedSaving(false)
                     }} disabled={fixedSaving || !fixedAddAmt}
                       style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: color, color: '#fff', border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: (!fixedAddAmt || fixedSaving) ? .5 : 1 }}>
-                      {fixedSaving ? 'Guardando…' : 'Guardar'}
+                      {fixedSaving ? 'Guardando…' : 'Guardar fondos'}
                     </button>
                     <button onClick={() => { setAddingToFixed(null); setFixedAddAmt('') }}
                       style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: 13 }}>
@@ -524,11 +520,6 @@ export default function GastosPage() {
                     </button>
                   </div>
                 </div>
-              ) : (
-                <button onClick={() => { setAddingToFixed(e.id); setFixedAddDate(today) }}
-                  style={{ width: '100%', marginTop: 10, padding: 9, borderRadius: 'var(--radius-sm)', background: color + '22', color, fontSize: 12, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
-                  + Agregar al sobre
-                </button>
               )}
             </div>
           )
@@ -542,6 +533,72 @@ export default function GastosPage() {
           initial={editingFixed}
         />
       )}
+      {/* Modal historial de sobre fijo */}
+      {historialFixedId && (() => {
+        const env = activeFixed.find(e => e.id === historialFixedId)
+        if (!env) return null
+        const { name: eName } = decFixed(env.name)
+        const envColor = CAT_COLORS[env.category]
+        const allAllocs = fixedExpenseAllocations
+          .filter(a => a.recurring_expense_id === historialFixedId)
+          .sort((a, b) => b.allocated_at.localeCompare(a.allocated_at))
+        const totFunded = allAllocs.filter(a => a.type !== 'withdrawal').reduce((s, a) => s + a.amount, 0)
+        const totSpent  = allAllocs.filter(a => a.type === 'withdrawal').reduce((s, a) => s + a.amount, 0)
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 200, display: 'flex', alignItems: 'flex-end' }}>
+            <div className="slide-up" style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '16px 20px 12px', borderBottom: '0.5px solid var(--border)', flexShrink: 0 }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: 18 }}>{ICONS[env.category]}</span>
+                    <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text1)' }}>{eName}</span>
+                  </div>
+                  <button onClick={() => setHistorialFixedId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text3)" /></button>
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Fondos</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: envColor }}>+{formatAUD(totFunded)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Gastado</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(totSpent)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Disponible</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: totFunded - totSpent >= 0 ? 'var(--text1)' : 'var(--red)' }}>{formatAUD(totFunded - totSpent)}</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ overflowY: 'auto', padding: '4px 20px 24px', flex: 1 }}>
+                {allAllocs.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text3)', padding: '24px 0', fontSize: 13 }}>Sin movimientos registrados</div>}
+                {allAllocs.map(a => {
+                  const isW = a.type === 'withdrawal'
+                  const linkedExp = a.expense_id ? expenses.find(ex => ex.id === a.expense_id) : null
+                  return (
+                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '0.5px solid var(--border)' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: isW ? 'rgba(220,38,38,.12)' : envColor + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: isW ? 'var(--red)' : envColor, flexShrink: 0 }}>
+                        {isW ? '−' : '+'}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {isW ? (linkedExp?.name || 'Gasto') : 'Depósito'}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDay(a.allocated_at)}</div>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: isW ? 'var(--red)' : envColor, whiteSpace: 'nowrap' }}>
+                        {isW ? '−' : '+'}{formatAUD(a.amount)}
+                      </span>
+                      <button onClick={() => { deleteFixedAllocation(a.id); scheduleUndo(isW ? 'Gasto eliminado' : 'Depósito eliminado', async () => { await addFixedAllocation(env.id, a.amount, a.allocated_at, a.expense_id ?? undefined, a.type) }) }}
+                        style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </>}
 
     {/* Modal: vincular gasto diario a un sobre */}
@@ -628,7 +685,7 @@ export default function GastosPage() {
               setAssignSaving(true); setAssignError(null)
               try {
                 if (selectedEnvId) {
-                  await addFixedAllocation(selectedEnvId, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id)
+                  await addFixedAllocation(selectedEnvId, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id, 'withdrawal')
                 } else if (selectedSavingsId) {
                   await addSavingsWithdrawal(selectedSavingsId, justSavedExpense.amount, justSavedExpense.id, justSavedExpense.expense_date)
                 }
