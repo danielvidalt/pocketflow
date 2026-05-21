@@ -49,7 +49,7 @@ function fmtDay(dateStr: string) {
 }
 
 export default function AhorrosPage() {
-  const { savingsGoals, expenses, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome, deleteSavingsEntry } = usePocketFlow()
+  const { savingsGoals, expenses, savingsWithdrawals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, addToSavings, weeklyIncome, deleteSavingsEntry, deleteSavingsWithdrawal, addSavingsWithdrawal } = usePocketFlow()
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const [showNew,     setShowNew]     = useState(false)
@@ -103,21 +103,37 @@ export default function AhorrosPage() {
 
         // Depósitos de este período
         const period = periodRange(freq)
-        const periodEntries = expenses
+        const periodDeposits = expenses
           .filter(e => e.name === `Ahorro: ${name}` && e.expense_date >= period.start && e.expense_date <= period.end)
           .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
-        const depositedThisPeriod = periodEntries.reduce((s, e) => s + e.amount, 0)
+        const depositedThisPeriod = periodDeposits.reduce((s, e) => s + e.amount, 0)
 
-        // Todos los movimientos (para expandir)
-        const allEntries = expenses
-          .filter(e => e.name === `Ahorro: ${name}`)
-          .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
+        // Retiros (gastos desde este sobre)
+        const allWithdrawals = savingsWithdrawals.filter(w => w.savings_goal_id === g.id)
+        const totalWithdrawn = allWithdrawals.reduce((s, w) => s + w.amount, 0)
+        const availableBalance = g.current_amount - totalWithdrawn
+
+        // Todos los movimientos mezclados (depósitos + retiros), para expandir
+        const allDeposits = expenses.filter(e => e.name === `Ahorro: ${name}`)
+        const allMovements = [
+          ...allDeposits.map(e => ({ kind: 'deposit' as const, date: e.expense_date, amount: e.amount, id: e.id, expenseId: e.id })),
+          ...allWithdrawals.map(w => ({ kind: 'withdrawal' as const, date: w.withdrawn_at, amount: w.amount, id: w.id, expenseId: w.expense_id })),
+        ].sort((a, b) => b.date.localeCompare(a.date))
+
+        const periodWithdrawals = allWithdrawals.filter(w => w.withdrawn_at >= period.start && w.withdrawn_at <= period.end)
+        const periodMovements = [
+          ...periodDeposits.map(e => ({ kind: 'deposit' as const, date: e.expense_date, amount: e.amount, id: e.id, expenseId: e.id })),
+          ...periodWithdrawals.map(w => ({ kind: 'withdrawal' as const, date: w.withdrawn_at, amount: w.amount, id: w.id, expenseId: w.expense_id })),
+        ].sort((a, b) => b.date.localeCompare(a.date))
+
+        // Alias para compatibilidad con lógica de expand
+        const allEntries = allMovements
 
         const pct = plannedPerPeriod > 0 ? (depositedThisPeriod / plannedPerPeriod) * 100 : 0
         const isOver = plannedPerPeriod > 0 && depositedThisPeriod > plannedPerPeriod
         const funded = pct >= 100
         const isExpanded = expandedId === g.id
-        const visibleEntries = isExpanded ? allEntries : periodEntries
+        const visibleEntries = isExpanded ? allEntries : periodMovements
 
         return (
           <div key={g.id} className="card" style={{marginBottom:10,borderLeft:`3px solid ${isOver ? 'var(--red)' : g.color}`}}>
@@ -153,53 +169,74 @@ export default function AhorrosPage() {
             </div>
             <ProgressBar percent={Math.min(100, pct)} color={isOver?'var(--red)':funded?'var(--green)':g.color} height={8}/>
 
-            {/* Total acumulado — con barra de meta si la tiene */}
+            {/* Balance acumulado */}
             {(g.current_amount > 0 || g.target_amount > 0) && (() => {
-              const metaPct = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0
-              const metaReached = g.current_amount >= g.target_amount && g.target_amount > 0
+              const avail = availableBalance
+              const metaPct = g.target_amount > 0 ? Math.min(100, (avail / g.target_amount) * 100) : 0
+              const metaReached = avail >= g.target_amount && g.target_amount > 0
               return (
                 <div style={{marginTop:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
-                  <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',marginBottom:6}}>Total ahorrado</div>
-                  {g.target_amount > 0 ? (
-                    <>
-                      <div className="flex items-baseline gap-2" style={{marginBottom:2}}>
-                        <span style={{fontSize:16,fontWeight:700,color:metaReached?'var(--green)':'var(--text1)'}}>{formatAUD(g.current_amount)}</span>
-                        <span style={{fontSize:12,color:'var(--text3)'}}>de {formatAUD(g.target_amount)}</span>
+                  <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',marginBottom:6}}>Balance del sobre</div>
+                  <div style={{display:'flex',gap:12,marginBottom:6}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>Guardado</div>
+                      <div style={{fontSize:14,fontWeight:600,color:'var(--text1)'}}>{formatAUD(g.current_amount)}</div>
+                    </div>
+                    {totalWithdrawn > 0 && (
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>Gastado del sobre</div>
+                        <div style={{fontSize:14,fontWeight:600,color:'var(--red)'}}>−{formatAUD(totalWithdrawn)}</div>
                       </div>
+                    )}
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>Disponible</div>
+                      <div style={{fontSize:14,fontWeight:700,color:avail >= 0 ? g.color : 'var(--red)'}}>{formatAUD(avail)}</div>
+                    </div>
+                  </div>
+                  {g.target_amount > 0 && (
+                    <>
                       <div style={{fontSize:11,marginBottom:6,fontWeight:metaReached?600:400,color:metaReached?'var(--green)':'var(--text3)'}}>
-                        {metaReached ? '✓ Meta alcanzada' : `Faltan ${formatAUD(g.target_amount - g.current_amount)}`}
+                        {metaReached ? '✓ Meta alcanzada' : `Faltan ${formatAUD(g.target_amount - avail)} para la meta`}
                       </div>
                       <ProgressBar percent={metaPct} color={metaReached?'var(--green)':g.color} height={6}/>
                     </>
-                  ) : (
-                    <span style={{fontSize:15,fontWeight:600,color:'var(--text1)'}}>{formatAUD(g.current_amount)}</span>
                   )}
                 </div>
               )
             })()}
 
-            {/* Historial expandible */}
+            {/* Historial expandible (depósitos + retiros) */}
             {allEntries.length > 0 && (
               <div style={{marginTop:10,paddingTop:8,borderTop:'0.5px solid var(--border)'}}>
                 <div className="flex items-center justify-between" style={{marginBottom:4}}>
                   <span style={{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase'}}>
                     {isExpanded ? 'Todos los movimientos' : 'Este período'}
                   </span>
-                  {allEntries.length > periodEntries.length && (
+                  {allEntries.length > periodMovements.length && (
                     <button onClick={() => setExpandedId(isExpanded ? null : g.id)}
                       style={{fontSize:11,color:'var(--blue)',background:'none',border:'none',cursor:'pointer',fontWeight:500}}>
                       {isExpanded ? 'Ver menos' : `Ver todos (${allEntries.length})`}
                     </button>
                   )}
                 </div>
-                {visibleEntries.map(e => (
-                  <div key={e.id} className="flex items-center gap-2 py-1.5" style={{borderBottom:'0.5px solid var(--border)'}}>
+                {visibleEntries.map(m => (
+                  <div key={m.id} className="flex items-center gap-2 py-1.5" style={{borderBottom:'0.5px solid var(--border)'}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:11,color:'var(--text3)'}}>{fmtDay(e.expense_date)}</div>
+                      <div style={{fontSize:11,color:'var(--text3)'}}>{fmtDay(m.date)}</div>
+                      {m.kind === 'withdrawal' && <div style={{fontSize:10,color:'var(--red)',fontWeight:500}}>Gasto del sobre</div>}
                     </div>
-                    <span style={{fontSize:13,fontWeight:500,color:g.color,whiteSpace:'nowrap'}}>+{formatAUD(e.amount)}</span>
-                    <button onClick={() => { const snap = e; const gId = g.id; deleteSavingsEntry(snap.id,gId,snap.amount); scheduleUndo('Movimiento eliminado', async () => { await addToSavings(gId,snap.amount,snap.expense_date) }) }}
-                      style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
+                    <span style={{fontSize:13,fontWeight:500,color:m.kind==='deposit'?g.color:'var(--red)',whiteSpace:'nowrap'}}>
+                      {m.kind==='deposit'?'+':'−'}{formatAUD(m.amount)}
+                    </span>
+                    <button onClick={() => {
+                      if (m.kind === 'deposit') {
+                        deleteSavingsEntry(m.id, g.id, m.amount)
+                        scheduleUndo('Depósito eliminado', async () => { await addToSavings(g.id, m.amount, m.date) })
+                      } else {
+                        deleteSavingsWithdrawal(m.id)
+                        scheduleUndo('Retiro eliminado', async () => { await addSavingsWithdrawal(g.id, m.amount, m.expenseId ?? undefined, m.date) })
+                      }
+                    }} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
                   </div>
                 ))}
               </div>

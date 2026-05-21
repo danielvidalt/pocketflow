@@ -53,7 +53,7 @@ const FIXED_FREQS: Array<{ id: 'weekly' | 'fortnightly' | 'monthly'; label: stri
 ]
 
 export default function GastosPage() {
-  const { expenses, addExpense, deleteExpense, weeklyIncome, weeklyFixedCosts, recurringExpenses, addRecurringExpense, updateRecurringExpense, deleteRecurringExpense, fixedExpenseAllocations, addFixedAllocation, deleteFixedAllocation, incomeEntries, incomeSources } = usePocketFlow()
+  const { expenses, addExpense, deleteExpense, weeklyIncome, weeklyFixedCosts, recurringExpenses, addRecurringExpense, updateRecurringExpense, deleteRecurringExpense, fixedExpenseAllocations, addFixedAllocation, deleteFixedAllocation, incomeEntries, incomeSources, savingsGoals, savingsWithdrawals, addSavingsWithdrawal } = usePocketFlow()
   const [tab, setTab] = useState<'daily' | 'fixed'>('daily')
 
   // ── Daily tab ──────────────────────────────────────────────────────────────
@@ -83,9 +83,14 @@ export default function GastosPage() {
   // Modal de asignación a sobre (aparece tras guardar un gasto diario)
   const [justSavedExpense, setJustSavedExpense] = useState<Expense | null>(null)
   const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null)
+  const [selectedSavingsId, setSelectedSavingsId] = useState<string | null>(null)
   const [assignSaving, setAssignSaving] = useState(false)
   const [assignError, setAssignError] = useState<string | null>(null)
   const activeFixed = recurringExpenses.filter(e => e.is_active)
+
+  function decSavings(raw: string): { name: string } {
+    const i = raw.indexOf(D); return { name: i === -1 ? raw : raw.slice(0, i) }
+  }
 
   // Hora LOCAL siempre, evita que gastos "se sumen pero no aparezcan"
   const today = localToday()
@@ -532,72 +537,111 @@ export default function GastosPage() {
       )}
     </>}
 
-    {/* Modal: asignar gasto diario a un sobre */}
-    {justSavedExpense && (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
-        <div className="slide-up" style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: 20 }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text1)' }}>¿Asignar a un sobre?</span>
-            <button onClick={() => setJustSavedExpense(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text3)" /></button>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
-            Gasto registrado: <strong style={{ color: 'var(--text1)' }}>{justSavedExpense.name}</strong> · {formatAUD(justSavedExpense.amount)}
-          </div>
-
-          {/* Lista de sobres — tocar selecciona, no guarda aún */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto', marginBottom: 12 }}>
-            {activeFixed.map(env => {
-              const { name: envName } = decFixed(env.name)
-              const envColor = CAT_COLORS[env.category]
-              const period = periodRange(env.frequency)
-              const envAllocated = fixedExpenseAllocations
-                .filter(a => a.recurring_expense_id === env.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
-                .reduce((s, a) => s + a.amount, 0)
-              const isSelected = selectedEnvId === env.id
-              return (
-                <button key={env.id} onClick={() => setSelectedEnvId(isSelected ? null : env.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
-                    background: isSelected ? envColor + '18' : 'var(--bg2)',
-                    border: isSelected ? `2px solid ${envColor}` : `1.5px solid ${envColor}33` }}>
-                  <span style={{ fontSize: 20 }}>{ICONS[env.category]}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{envName}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{FREQ_LABELS[env.frequency]} · {formatAUD(envAllocated)} de {formatAUD(env.amount)}</div>
-                  </div>
-                  {isSelected && <span style={{ fontSize: 16, color: envColor, flexShrink: 0 }}>✓</span>}
-                </button>
-              )
-            })}
-          </div>
-
-          {assignError && (
-            <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 10 }}>
-              ⚠️ {assignError}
+    {/* Modal: vincular gasto diario a un sobre */}
+    {justSavedExpense && (() => {
+      const hasSelection = !!selectedEnvId || !!selectedSavingsId
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
+          <div className="slide-up" style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: 'var(--bg)', borderRadius: '20px 20px 0 0', padding: 20 }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text1)' }}>¿A qué sobre pertenece?</span>
+              <button onClick={() => { setJustSavedExpense(null); setSelectedEnvId(null); setSelectedSavingsId(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="var(--text3)" /></button>
             </div>
-          )}
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+              Gasto: <strong style={{ color: 'var(--text1)' }}>{justSavedExpense.name}</strong> · {formatAUD(justSavedExpense.amount)}
+            </div>
 
-          {/* Botón de confirmación — solo activo si hay sobre seleccionado */}
-          <button disabled={!selectedEnvId || assignSaving} onClick={async () => {
-            if (!selectedEnvId) return
-            setAssignSaving(true); setAssignError(null)
-            try {
-              await addFixedAllocation(selectedEnvId, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id)
-              setJustSavedExpense(null)
-            } catch {
-              setAssignError('No se pudo asignar. Verificá que la migración de Supabase esté aplicada.')
-            } finally {
-              setAssignSaving(false)
-            }
-          }} style={{ width: '100%', padding: '12px 0', borderRadius: 8, background: selectedEnvId ? 'var(--blue)' : 'var(--bg3)', color: selectedEnvId ? '#fff' : 'var(--text3)', border: 'none', fontSize: 14, fontWeight: 600, cursor: selectedEnvId ? 'pointer' : 'default', marginBottom: 8, opacity: assignSaving ? .6 : 1 }}>
-            {assignSaving ? 'Guardando…' : selectedEnvId ? `Confirmar asignación` : 'Seleccioná un sobre'}
-          </button>
-          <button onClick={() => setJustSavedExpense(null)}
-            style={{ width: '100%', padding: '11px 0', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>
-            No asignar
-          </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+
+              {/* Sobres de gasto fijo */}
+              {activeFixed.length > 0 && (
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Gastos fijos</div>
+              )}
+              {activeFixed.map(env => {
+                const { name: envName } = decFixed(env.name)
+                const envColor = CAT_COLORS[env.category]
+                const period = periodRange(env.frequency)
+                const envAllocated = fixedExpenseAllocations
+                  .filter(a => a.recurring_expense_id === env.id && a.allocated_at >= period.start && a.allocated_at <= period.end)
+                  .reduce((s, a) => s + a.amount, 0)
+                const isSelected = selectedEnvId === env.id
+                return (
+                  <button key={env.id} onClick={() => { setSelectedEnvId(isSelected ? null : env.id); setSelectedSavingsId(null) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                      background: isSelected ? envColor + '18' : 'var(--bg2)',
+                      border: isSelected ? `2px solid ${envColor}` : `1.5px solid ${envColor}33` }}>
+                    <span style={{ fontSize: 20 }}>{ICONS[env.category]}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{envName}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{FREQ_LABELS[env.frequency]} · {formatAUD(envAllocated)} de {formatAUD(env.amount)}</div>
+                    </div>
+                    {isSelected && <span style={{ fontSize: 16, color: envColor, flexShrink: 0 }}>✓</span>}
+                  </button>
+                )
+              })}
+
+              {/* Sobres de ahorro */}
+              {savingsGoals.length > 0 && (
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginTop: activeFixed.length > 0 ? 6 : 0, marginBottom: 2 }}>Ahorros — se descuenta del sobre</div>
+              )}
+              {savingsGoals.map(goal => {
+                const { name: gName } = decSavings(goal.name)
+                const totalWithdrawn = savingsWithdrawals
+                  .filter(w => w.savings_goal_id === goal.id)
+                  .reduce((s, w) => s + w.amount, 0)
+                const available = goal.current_amount - totalWithdrawn
+                const isSelected = selectedSavingsId === goal.id
+                const afterWithdraw = available - justSavedExpense.amount
+                return (
+                  <button key={goal.id} onClick={() => { setSelectedSavingsId(isSelected ? null : goal.id); setSelectedEnvId(null) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                      background: isSelected ? goal.color + '18' : 'var(--bg2)',
+                      border: isSelected ? `2px solid ${goal.color}` : `1.5px solid ${goal.color}33` }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: goal.color + '33', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>💰</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{gName}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                        Disponible: {formatAUD(available)}
+                        {isSelected && <span style={{ color: afterWithdraw >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}> → {formatAUD(afterWithdraw)}</span>}
+                      </div>
+                    </div>
+                    {isSelected && <span style={{ fontSize: 16, color: goal.color, flexShrink: 0 }}>✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            {assignError && (
+              <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 10 }}>
+                ⚠️ {assignError}
+              </div>
+            )}
+
+            <button disabled={!hasSelection || assignSaving} onClick={async () => {
+              setAssignSaving(true); setAssignError(null)
+              try {
+                if (selectedEnvId) {
+                  await addFixedAllocation(selectedEnvId, justSavedExpense.amount, justSavedExpense.expense_date, justSavedExpense.id)
+                } else if (selectedSavingsId) {
+                  await addSavingsWithdrawal(selectedSavingsId, justSavedExpense.amount, justSavedExpense.id, justSavedExpense.expense_date)
+                }
+                setJustSavedExpense(null); setSelectedEnvId(null); setSelectedSavingsId(null)
+              } catch {
+                setAssignError('No se pudo vincular. Verificá que la migración de Supabase esté aplicada.')
+              } finally {
+                setAssignSaving(false)
+              }
+            }} style={{ width: '100%', padding: '12px 0', borderRadius: 8, background: hasSelection ? 'var(--blue)' : 'var(--bg3)', color: hasSelection ? '#fff' : 'var(--text3)', border: 'none', fontSize: 14, fontWeight: 600, cursor: hasSelection ? 'pointer' : 'default', marginBottom: 8, opacity: assignSaving ? .6 : 1 }}>
+              {assignSaving ? 'Guardando…' : selectedSavingsId ? 'Descontar del sobre de ahorro' : hasSelection ? 'Confirmar asignación' : 'Seleccioná un sobre'}
+            </button>
+            <button onClick={() => { setJustSavedExpense(null); setSelectedEnvId(null); setSelectedSavingsId(null) }}
+              style={{ width: '100%', padding: '11px 0', borderRadius: 8, background: 'var(--bg2)', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>
+              No vincular
+            </button>
+          </div>
         </div>
-      </div>
-    )}
+      )
+    })()}
     {undoItem && (
       <div style={{ position: 'fixed', bottom: 88, left: '50%', transform: 'translateX(-50%)', background: 'var(--text1)', color: 'var(--bg)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16, zIndex: 150, fontSize: 13, maxWidth: 380, width: 'calc(100% - 32px)', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }}>
         <span style={{ flex: 1 }}>{undoItem.label}</span>
