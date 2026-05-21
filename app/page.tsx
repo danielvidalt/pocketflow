@@ -63,7 +63,7 @@ export default function HomePage(){
   }
 
   function applySettings(){
-    setSettings(pending); saveSettings(pending)
+    setSettings(pending); saveSettings({...pending, theme})
     if(!pending.showMonth&&period==='month') setPeriod('week')
     setShowSettings(false)
   }
