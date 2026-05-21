@@ -33,6 +33,7 @@ export default function HistorialPage() {
   const todayStr = localToday()
   const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
 
+  const [histVisible, setHistVisible] = useState(true)
   const hasFilters = query.trim() !== '' || selectedCat !== null || dateFrom !== '' || dateTo !== ''
 
   function clearFilters() {
@@ -212,11 +213,26 @@ export default function HistorialPage() {
     </div>
 
     <div className="scroll-area" style={{ padding: '0 16px 16px' }}>
-      {groups.length === 0 && <EmptyState message={hasFilters ? 'Sin resultados para esta búsqueda' : 'Sin gastos registrados'} />}
-      {groups.map(({ date, label, items }) => {
-        const dayTotal = items.reduce((s, e) => s + e.amount, 0)
-        const isConfirming = confirmDate === date
-        return (
+      <button
+        type="button"
+        aria-expanded={histVisible}
+        onClick={() => setHistVisible(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg2)', border: 'none', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', marginBottom: 12 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
+          Historial de movimientos {filtered.length > 0 && `(${filtered.length})`}
+        </span>
+        {histVisible
+          ? <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text3)' }}>Ocultar</span>
+          : <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--accent)' }}>Ver todo</span>
+        }
+      </button>
+      {histVisible && (
+        groups.length === 0
+          ? <EmptyState message={hasFilters ? 'Sin resultados para esta búsqueda' : 'Sin gastos registrados'} />
+          : groups.map(({ date, label, items }) => {
+              const dayTotal = items.reduce((s, e) => s + e.amount, 0)
+              const isConfirming = confirmDate === date
+              return (
           <div key={date} style={{ marginTop: 12 }}>
             <div className="flex items-center gap-2 pb-1.5" style={{ borderBottom: '0.5px solid var(--border)' }}>
               <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', flex: 1 }}>{label}</span>
@@ -252,7 +268,8 @@ export default function HistorialPage() {
             ))}
           </div>
         )
-      })}
+      })
+      )}
 
       {/* Total filtrado */}
       {hasFilters && filtered.length > 0 && (

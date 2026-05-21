@@ -7,7 +7,7 @@ import { SectionHeader, EmptyState, ProgressBar } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
 import { parseISO, format, subDays } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Plus, X, MoreHorizontal, Search, SlidersHorizontal, History } from 'lucide-react'
+import { Plus, X, MoreHorizontal, Search, SlidersHorizontal, History, ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
 
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
@@ -44,6 +44,7 @@ export default function GastosPage() {
   const todayStr = today
   const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
   const [tab, setTab] = useState<'daily' | 'fixed'>('daily')
+  const [histVisible, setHistVisible] = useState(false)
 
   // Search/filter
   const [query, setQuery] = useState('')
@@ -155,36 +156,55 @@ export default function GastosPage() {
           </div>
         )}
       </div>
-      <div className="scroll-area" style={{ paddingLeft: 16, paddingRight: 16 }}>
-        <div className="flex items-center justify-between" style={{ paddingTop: 12, paddingBottom: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>Historial completo</span>
-          <Link href="/gastos/historial" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>
-            <History size={12} /> Ver todo
-          </Link>
-        </div>
-        {expGroups.length === 0 && <EmptyState message={hasFilters ? 'Sin resultados' : 'Sin gastos registrados'} />}
-        {expGroups.map(({ date, label, items }) => {
-          const dayTotal = items.reduce((s, e) => s + e.amount, 0)
-          return (
-            <div key={date} className="card" style={{ marginBottom: 10, borderLeft: '3px solid var(--red)' }}>
-              <div className="flex justify-between pb-2" style={{ borderBottom: '0.5px solid var(--border)', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(dayTotal)}</span>
-              </div>
-              {items.map(e => (
-                <div key={e.id} className="flex items-center gap-2.5 py-2" style={{ borderBottom: '0.5px solid var(--border)' }}>
-                  <div style={{ fontSize: 16, width: 30, height: 30, borderRadius: 8, background: CAT_COLORS[e.category] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{CAT_ICONS[e.category]}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{CAT_LABELS[e.category]}</div>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--red)', whiteSpace: 'nowrap' }}>−{formatAUD(e.amount)}</span>
-                  <button onClick={() => { const snap = e; deleteExpense(snap.id); scheduleUndo(`"${snap.name}" eliminado`, async () => { await addExpense({ name: snap.name, amount: snap.amount, category: snap.category, expense_date: snap.expense_date, is_recurring: snap.is_recurring, note: snap.note }) }) }} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+      <div className="scroll-area" style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 10 }}>
+        {/* Toggle historial */}
+        <button
+          type="button"
+          aria-expanded={histVisible}
+          onClick={() => setHistVisible(v => !v)}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg2)', border: 'none', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', marginBottom: histVisible ? 10 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <History size={13} color="var(--text3)" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
+              Historial {expGroups.length > 0 && `(${expGroups.reduce((s, g) => s + g.items.length, 0)} gastos)`}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {histVisible
+              ? <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text3)' }}><ChevronUp size={13} /> Ocultar</span>
+              : <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--blue)' }}><ChevronDown size={13} /> Ver todo</span>
+            }
+          </div>
+        </button>
+
+        {histVisible && <>
+          {expGroups.length === 0 && <EmptyState message={hasFilters ? 'Sin resultados' : 'Sin gastos registrados'} />}
+          {expGroups.map(({ date, label, items }) => {
+            const dayTotal = items.reduce((s, e) => s + e.amount, 0)
+            return (
+              <div key={date} className="card" style={{ marginBottom: 10, borderLeft: '3px solid var(--red)' }}>
+                <div className="flex justify-between pb-2" style={{ borderBottom: '0.5px solid var(--border)', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(dayTotal)}</span>
                 </div>
-              ))}
-            </div>
-          )
-        })}
+                {items.map(e => (
+                  <div key={e.id} className="flex items-center gap-2.5 py-2" style={{ borderBottom: '0.5px solid var(--border)' }}>
+                    <div style={{ fontSize: 16, width: 30, height: 30, borderRadius: 8, background: CAT_COLORS[e.category] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{CAT_ICONS[e.category]}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{CAT_LABELS[e.category]}</div>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--red)', whiteSpace: 'nowrap' }}>−{formatAUD(e.amount)}</span>
+                    <button onClick={() => { const snap = e; deleteExpense(snap.id); scheduleUndo(`"${snap.name}" eliminado`, async () => { await addExpense({ name: snap.name, amount: snap.amount, category: snap.category, expense_date: snap.expense_date, is_recurring: snap.is_recurring, note: snap.note }) }) }} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+          <Link href="/gastos/historial" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 12, color: 'var(--blue)', textDecoration: 'none', fontWeight: 500, padding: '8px 0' }}>
+            <History size={13} /> Ver historial completo
+          </Link>
+        </>}
       </div>
     </>}
 

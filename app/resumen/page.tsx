@@ -6,8 +6,18 @@ import { formatAUD, CAT_COLORS, CAT_LABELS } from '@/lib/types'
 import type { ExpenseCategory } from '@/lib/types'
 import { SectionHeader, ProgressBar, MetricCard } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parseISO, subDays, format } from 'date-fns'
+import { startOfMonth, endOfMonth, isWithinInterval, parseISO, format } from 'date-fns'
 import { ChevronRight, RefreshCw } from 'lucide-react'
+import { getSettings } from '@/lib/settings'
+
+function getPayWeekStart(from: Date, startDay: number): Date {
+  const d = new Date(from)
+  let diff = d.getDay() - startDay
+  if (diff < 0) diff += 7
+  d.setDate(d.getDate() - diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
 
 const CAT_ICONS: Record<ExpenseCategory, string> = { food:'🍽️', supermarket:'🛒', transport:'🚌', leisure:'🎬', shopping:'🛍️', health:'💊', housing:'🏠', subscriptions:'📱', debt:'💳', bank:'🏦', other:'···' }
 
@@ -30,17 +40,22 @@ function decName(raw: string) { const i = raw.indexOf('\x1F'); return i === -1 ?
 
 export default function ResumenPage() {
   const { incomeEntries, expenses, debtPockets, savingsGoals, savingsWithdrawals,
-    exchangeRates, deleteAllData, weeklyFixedCosts, recurringExpenses, fixedExpenseAllocations } = usePocketFlow()
+    exchangeRates, deleteAllData, recurringExpenses, fixedExpenseAllocations } = usePocketFlow()
   const router = useRouter()
   const [period, setPeriod] = useState<'week'|'fortnight'|'month'>('week')
   const [showDeleteAll, setShowDeleteAll] = useState(false)
   const [deletingAll, setDeletingAll] = useState(false)
   const now = new Date()
+  const settings = getSettings()
+  const wkStart = getPayWeekStart(now, settings.payDayStart)
+  const wkEnd = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 6); wkEnd.setHours(23, 59, 59, 999)
+  const fnPrevStart = new Date(wkStart); fnPrevStart.setDate(wkStart.getDate() - 7)
+  const fnNextEnd = new Date(wkStart); fnNextEnd.setDate(wkStart.getDate() + 13); fnNextEnd.setHours(23, 59, 59, 999)
 
   const range = period === 'week'
-    ? { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) }
+    ? { start: wkStart, end: wkEnd }
     : period === 'fortnight'
-      ? { start: subDays(now, 13), end: now }
+      ? (settings.fortnightDir === 'next' ? { start: wkStart, end: fnNextEnd } : { start: fnPrevStart, end: wkEnd })
       : { start: startOfMonth(now), end: endOfMonth(now) }
 
   const entries = useMemo(() => incomeEntries.filter(e => isWithinInterval(parseISO(e.received_at), range)), [incomeEntries, period])
@@ -48,8 +63,11 @@ export default function ResumenPage() {
   const cobrado = entries.reduce((s, e) => s + e.amount, 0)
   const gastadoRegular = exps.filter(e => !e.name.startsWith('Ahorro: ')).reduce((s, e) => s + e.amount, 0)
   const gastadoAhorros = exps.filter(e => e.name.startsWith('Ahorro: ')).reduce((s, e) => s + e.amount, 0)
-  const multiplier = period === 'week' ? 1 : period === 'fortnight' ? 2 : 4.33
-  const fixedCosts = weeklyFixedCosts() * multiplier
+  const rangeStartStr = format(range.start, 'yyyy-MM-dd')
+  const rangeEndStr = format(range.end, 'yyyy-MM-dd')
+  const gastadoFijoReal = fixedExpenseAllocations
+    .filter(a => a.type === 'withdrawal' && a.allocated_at >= rangeStartStr && a.allocated_at <= rangeEndStr)
+    .reduce((s, a) => s + a.amount, 0)
   const gastadoTotal = gastadoRegular + gastadoAhorros
 
   const catDist = useMemo(() => {
@@ -100,7 +118,7 @@ export default function ResumenPage() {
       <div className="grid grid-cols-3 gap-2" style={{ marginBottom: 12 }}>
         <MetricCard label="Ingresos" value={formatAUD(cobrado)} valueColor="var(--green)" />
         <MetricCard label="Gastado" value={formatAUD(gastadoRegular)} valueColor="var(--red)" />
-        <MetricCard label="Disponible" value={formatAUD(Math.max(0, cobrado - gastadoTotal - fixedCosts))} valueColor="var(--blue)" />
+        <MetricCard label="Disponible" value={formatAUD(Math.max(0, cobrado - gastadoTotal - gastadoFijoReal))} valueColor="var(--blue)" />
       </div>
 
       {/* ── GASTOS DIARIOS ── */}

@@ -30,7 +30,7 @@ function getPayWeekStart(from: Date, startDay: number): Date {
 }
 
 export default function HomePage(){
-  const {fetchAll,fetchExchangeRates,incomeSources,incomeEntries,expenses,weeklyFixedCosts}=usePocketFlow()
+  const {fetchAll,fetchExchangeRates,incomeSources,incomeEntries,expenses,fixedExpenseAllocations}=usePocketFlow()
   const router=useRouter()
   const [checking,setChecking]=useState(true)
   const [period,setPeriod]=useState<Period>('week')
@@ -103,8 +103,11 @@ export default function HomePage(){
   },[expenses,period,settings.fortnightDir,settings.payDayStart])
 
   const periodSpent=periodExps.reduce((s,e)=>s+e.amount,0)
-  const fixedCosts=weeklyFixedCosts()*multiplier
-  const remaining=collectedThisPeriod-periodSpent-fixedCosts
+  const {start:_ps,end:_pe}=getPeriodRange()
+  const actualFixedSpent=fixedExpenseAllocations
+    .filter(a=>a.type==='withdrawal'&&a.allocated_at>=format(_ps,'yyyy-MM-dd')&&a.allocated_at<=format(_pe,'yyyy-MM-dd'))
+    .reduce((s,a)=>s+a.amount,0)
+  const remaining=collectedThisPeriod-periodSpent-actualFixedSpent
 
   const todayExps=useMemo(()=>expenses.filter(e=>isToday(parseISO(e.expense_date))),[expenses])
   const todayTotal=todayExps.reduce((s,e)=>s+e.amount,0)
@@ -165,11 +168,11 @@ export default function HomePage(){
           </div>
           <div style={{background:'rgba(255,255,255,.15)',borderRadius:8,padding:'8px 10px'}}>
             <div style={{fontSize:10,color:'rgba(255,255,255,.7)',marginBottom:2}}>Gastado</div>
-            <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{formatAUD(periodSpent+fixedCosts)}</div>
+            <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{formatAUD(periodSpent+actualFixedSpent)}</div>
           </div>
           <div style={{background:'rgba(255,255,255,.15)',borderRadius:8,padding:'8px 10px'}}>
             <div style={{fontSize:10,color:'rgba(255,255,255,.7)',marginBottom:2}}>Fijos</div>
-            <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{formatAUD(fixedCosts)}</div>
+            <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{formatAUD(actualFixedSpent)}</div>
           </div>
         </div>
       </div>

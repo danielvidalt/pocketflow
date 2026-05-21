@@ -9,7 +9,7 @@ import { es } from 'date-fns/locale'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 function localToday() { return format(new Date(), 'yyyy-MM-dd') }
-function fmtDay(d: string) {
+function fmtShort(d: string) {
   const today = localToday()
   const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
   if (d === today) return 'Hoy'
@@ -19,7 +19,6 @@ function fmtDay(d: string) {
 
 const D = '\x1F'
 function decName(raw: string) { const i = raw.indexOf(D); return i === -1 ? raw : raw.slice(0, i) }
-
 function periodRange(frequency: 'weekly' | 'fortnightly' | 'monthly') {
   const now = new Date(); const todayStr = format(now, 'yyyy-MM-dd')
   if (frequency === 'weekly') {
@@ -35,7 +34,7 @@ function periodRange(frequency: 'weekly' | 'fortnightly' | 'monthly') {
   return { start: format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'), end: format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd') }
 }
 
-const CAT_ICONS: Record<ExpenseCategory, string> = { food: '🍽️', supermarket: '🛒', transport: '🚌', leisure: '🎬', shopping: '🛍️', health: '💊', housing: '🏠', subscriptions: '📱', debt: '💳', bank: '🏦', other: '···' }
+const CAT_ICONS: Record<ExpenseCategory, string> = { food:'🍽️', supermarket:'🛒', transport:'🚌', leisure:'🎬', shopping:'🛍️', health:'💊', housing:'🏠', subscriptions:'📱', debt:'💳', bank:'🏦', other:'···' }
 const CATS = Object.entries(CAT_LABELS) as [ExpenseCategory, string][]
 type ExpType = 'daily' | 'fixed' | 'savings'
 
@@ -53,18 +52,16 @@ export default function RegistrarPage() {
   const [selectedSav, setSelectedSav] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [histExpanded, setHistExpanded] = useState(false)
+  const [histVisible, setHistVisible] = useState(false)
   const amtRef = useRef<HTMLInputElement>(null)
 
   const activeFixed = recurringExpenses.filter(e => e.is_active)
 
-  // Últimos movimientos (últimos 20, sin transferencias a ahorro)
   const recentExpenses = useMemo(() =>
-    expenses.filter(e => !e.name.startsWith('Ahorro: ')).slice(0, 20),
+    expenses.filter(e => !e.name.startsWith('Ahorro: ')).slice(0, 30),
     [expenses]
   )
 
-  // Agrupar los recientes por fecha
   const recentGroups = useMemo(() => {
     const map = new Map<string, typeof expenses>()
     for (const e of recentExpenses) {
@@ -72,11 +69,9 @@ export default function RegistrarPage() {
       map.get(e.expense_date)!.push(e)
     }
     return Array.from(map.keys()).sort((a, b) => b.localeCompare(a)).map(date => ({
-      date, label: fmtDay(date), items: map.get(date)!,
+      date, label: fmtShort(date), items: map.get(date)!,
     }))
   }, [recentExpenses])
-
-  const visibleGroups = histExpanded ? recentGroups : recentGroups.slice(0, 2)
 
   const typeColor = expType === 'daily' ? 'var(--blue)' : expType === 'fixed' ? 'var(--red)' : 'var(--green)'
   const typeLabel = expType === 'daily' ? 'Gasto Diario' : expType === 'fixed' ? 'Gasto Fijo' : 'Ahorro'
@@ -128,7 +123,7 @@ export default function RegistrarPage() {
           ))}
         </div>
 
-        {/* Monto (siempre visible) */}
+        {/* Monto */}
         <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
           <span style={{ fontSize: 24, fontWeight: 600, color: 'var(--text3)' }}>$</span>
           <input ref={amtRef} type="number" inputMode="decimal" value={amount} autoFocus
@@ -137,12 +132,12 @@ export default function RegistrarPage() {
             style={{ flex: 1, fontSize: 32, fontWeight: 700, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none', borderBottom: `2.5px solid ${typeColor}`, paddingBottom: 2 }} />
         </div>
 
-        {/* Nombre / nota (siempre visible) */}
+        {/* Nombre / nota */}
         <input type="text" value={note} onChange={e => setNote(e.target.value)}
           placeholder={expType === 'daily' ? 'Nombre o nota (opcional)…' : 'Nota (opcional)…'}
           style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, color: 'var(--text2)', border: 'none', background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', outline: 'none', marginBottom: 12 }} />
 
-        {/* ── Condicional: Categorías (Diario) ── */}
+        {/* Categorías (Diario) */}
         {expType === 'daily' && (
           <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none', marginBottom: 12 }}>
             {CATS.map(([id, label]) => { const on = selCat === id; return (
@@ -154,7 +149,7 @@ export default function RegistrarPage() {
           </div>
         )}
 
-        {/* ── Condicional: Sobres Fijos ── */}
+        {/* Sobres Fijos */}
         {expType === 'fixed' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: 180, overflowY: 'auto' }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Elegí el sobre a descontar</div>
@@ -175,7 +170,7 @@ export default function RegistrarPage() {
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
                         <div style={{ fontSize: 11, color: 'var(--text3)' }}>Disponible: <span style={{ color: avail >= 0 ? envCol : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
                       </div>
-                      {on && <span style={{ color: envCol, fontSize: 14 }}>✓</span>}
+                      {on && <span style={{ color: envCol }}>✓</span>}
                     </button>
                   )
                 })
@@ -183,7 +178,7 @@ export default function RegistrarPage() {
           </div>
         )}
 
-        {/* ── Condicional: Sobres de Ahorro ── */}
+        {/* Sobres de Ahorro */}
         {expType === 'savings' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: 180, overflowY: 'auto' }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Elegí el sobre a descontar</div>
@@ -202,7 +197,7 @@ export default function RegistrarPage() {
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
                         <div style={{ fontSize: 11, color: 'var(--text3)' }}>Disponible: <span style={{ color: avail >= 0 ? goal.color : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
                       </div>
-                      {on && <span style={{ color: goal.color, fontSize: 14 }}>✓</span>}
+                      {on && <span style={{ color: goal.color }}>✓</span>}
                     </button>
                   )
                 })
@@ -210,7 +205,7 @@ export default function RegistrarPage() {
           </div>
         )}
 
-        {/* Fecha (siempre visible) */}
+        {/* Fecha */}
         <div style={{ position: 'relative', marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>📅</span>
@@ -228,43 +223,47 @@ export default function RegistrarPage() {
         </button>
       </div>
 
-      {/* ── ÚLTIMOS MOVIMIENTOS ── */}
-      <div>
-        <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Últimos movimientos</span>
-          {recentGroups.length > 2 && (
-            <button onClick={() => setHistExpanded(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
-              {histExpanded ? <><ChevronUp size={13} /> Ver menos</> : <><ChevronDown size={13} /> Ver más</>}
-            </button>
-          )}
-        </div>
+      {/* ── ÚLTIMOS MOVIMIENTOS (colapsable) ── */}
+      <button
+        type="button"
+        aria-expanded={histVisible}
+        onClick={() => setHistVisible(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg2)', border: 'none', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', marginBottom: histVisible ? 8 : 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
+          Últimos movimientos {recentExpenses.length > 0 && `(${recentExpenses.length})`}
+        </span>
+        {histVisible
+          ? <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text3)' }}><ChevronUp size={14} /> Ocultar</span>
+          : <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--blue)' }}><ChevronDown size={14} /> Ver todo</span>
+        }
+      </button>
 
-        {recentExpenses.length === 0 && <EmptyState message="Sin movimientos aún" />}
-
-        {visibleGroups.map(({ date, label, items }) => {
-          const dayTotal = items.reduce((s, e) => s + e.amount, 0)
-          return (
-            <div key={date} className="card" style={{ marginBottom: 8, padding: '10px 14px', borderLeft: '3px solid var(--red)' }}>
-              <div className="flex justify-between" style={{ marginBottom: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(dayTotal)}</span>
-              </div>
-              {items.map(e => (
-                <div key={e.id} className="flex items-center gap-2 py-1.5" style={{ borderTop: '0.5px solid var(--border)' }}>
-                  <div style={{ fontSize: 14, width: 26, height: 26, borderRadius: 7, background: CAT_COLORS[e.category] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{CAT_ICONS[e.category]}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABELS[e.category]}</div>
+      {histVisible && (
+        recentExpenses.length === 0
+          ? <EmptyState message="Sin movimientos aún" />
+          : recentGroups.map(({ date, label, items }) => {
+              const dayTotal = items.reduce((s, e) => s + e.amount, 0)
+              return (
+                <div key={date} className="card" style={{ marginBottom: 8, padding: '10px 14px', borderLeft: '3px solid var(--red)' }}>
+                  <div className="flex justify-between" style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(dayTotal)}</span>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)', whiteSpace: 'nowrap' }}>−{formatAUD(e.amount)}</span>
-                  <button onClick={() => deleteExpense(e.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                  {items.map(e => (
+                    <div key={e.id} className="flex items-center gap-2 py-1.5" style={{ borderTop: '0.5px solid var(--border)' }}>
+                      <div style={{ fontSize: 14, width: 26, height: 26, borderRadius: 7, background: CAT_COLORS[e.category] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{CAT_ICONS[e.category]}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABELS[e.category]}</div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)', whiteSpace: 'nowrap' }}>−{formatAUD(e.amount)}</span>
+                      <button onClick={() => deleteExpense(e.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )
-        })}
-      </div>
+              )
+            })
+      )}
     </div>
     <BottomNav />
   </>)
