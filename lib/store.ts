@@ -8,7 +8,8 @@ import { weeklyEquivalent, FREQ_DIVISORS } from './types'
 // Si agregas una nueva categoría en types.ts también debes correr la migración en Supabase.
 const DB_VALID_CATEGORIES = new Set([
   'food','transport','leisure','shopping','health','housing','subscriptions','other',
-  'supermarket', // incluido después de correr migration_add_supermarket_category.sql
+  'supermarket', // migration_add_supermarket_category.sql
+  'debt','bank',  // migration_add_debt_bank_categories.sql
 ])
 
 interface State {
