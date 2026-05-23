@@ -33,9 +33,9 @@ interface State {
   updateSavingsGoal:(id:string,d:Partial<Omit<SavingsGoal,'id'|'user_id'>>)=>Promise<void>
   deleteSavingsGoal:(id:string)=>Promise<void>
   addToSavings:(id:string,amount:number,date?:string)=>Promise<void>
-  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string,expenseId?:string,type?:'deposit'|'withdrawal')=>Promise<void>
+  addFixedAllocation:(recurringExpenseId:string,amount:number,date?:string,expenseId?:string,type?:'deposit'|'withdrawal',note?:string)=>Promise<void>
   deleteFixedAllocation:(id:string)=>Promise<void>
-  addSavingsWithdrawal:(goalId:string,amount:number,expenseId?:string,date?:string)=>Promise<void>
+  addSavingsWithdrawal:(goalId:string,amount:number,expenseId?:string,date?:string,note?:string)=>Promise<void>
   deleteSavingsWithdrawal:(id:string)=>Promise<void>
   updateRecurringExpense:(id:string,d:Partial<Omit<RecurringExpense,'id'|'user_id'|'created_at'>>)=>Promise<void>
   weeklyIncome:()=>number; weeklyFixedCosts:()=>number; todayExpenses:()=>Expense[]; weekExpenses:()=>Expense[]
@@ -242,11 +242,11 @@ export const usePocketFlow = create<State>((set,get) => ({
     }))
   },
 
-  addFixedAllocation: async (recurringExpenseId, amount, date?, expenseId?, type = 'deposit') => {
+  addFixedAllocation: async (recurringExpenseId, amount, date?, expenseId?, type = 'deposit', note?) => {
     const user = await getUser(); const db = getClient()
     const allocated_at = date || format(new Date(), 'yyyy-MM-dd')
     const { data:row, error } = await db.from('fixed_expense_allocations')
-      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at, expense_id: expenseId || null, type})
+      .insert({user_id:user.id, recurring_expense_id:recurringExpenseId, amount, allocated_at, expense_id: expenseId || null, type, note: note || null})
       .select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({fixedExpenseAllocations:[row,...s.fixedExpenseAllocations]}))
@@ -258,11 +258,11 @@ export const usePocketFlow = create<State>((set,get) => ({
     set(s=>({fixedExpenseAllocations:s.fixedExpenseAllocations.filter(a=>a.id!==id)}))
   },
 
-  addSavingsWithdrawal: async (goalId, amount, expenseId?, date?) => {
+  addSavingsWithdrawal: async (goalId, amount, expenseId?, date?, note?) => {
     const user = await getUser(); const db = getClient()
     const withdrawn_at = date || format(new Date(), 'yyyy-MM-dd')
     const { data:row, error } = await db.from('savings_withdrawals')
-      .insert({ user_id:user.id, savings_goal_id:goalId, amount, withdrawn_at, expense_id:expenseId||null })
+      .insert({ user_id:user.id, savings_goal_id:goalId, amount, withdrawn_at, expense_id:expenseId||null, note: note||null })
       .select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({savingsWithdrawals:[row,...s.savingsWithdrawals]}))
