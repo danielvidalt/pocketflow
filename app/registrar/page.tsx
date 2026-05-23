@@ -1,287 +1,380 @@
 'use client'
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { usePocketFlow } from '@/lib/store'
-import { formatAUD, CAT_COLORS, CAT_LABELS, ExpenseCategory } from '@/lib/types'
-import { SectionHeader, EmptyState } from '@/components/ui'
+import { formatAUD, CAT_LABELS, CAT_COLORS, ExpenseCategory } from '@/lib/types'
+import { SectionHeader } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
-import { parseISO, format, subDays } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Check } from 'lucide-react'
+import { getSettings } from '@/lib/settings'
 
-function localToday() { return format(new Date(), 'yyyy-MM-dd') }
-function fmtShort(d: string) {
-  const today = localToday()
-  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
-  if (d === today) return 'Hoy'
-  if (d === yesterday) return 'Ayer'
-  return format(parseISO(d), "d MMM", { locale: es })
+type ExpenseType = 'daily' | 'fixed' | 'savings'
+
+const CATS = Object.entries(CAT_LABELS) as [ExpenseCategory, string][]
+const CAT_ICONS: Record<ExpenseCategory, string> = {
+  food:'🍽️', supermarket:'🛒', transport:'🚌', leisure:'🎬', shopping:'🛍️',
+  health:'💊', housing:'🏠', subscriptions:'📱', debt:'💳', bank:'🏦', other:'···'
 }
 
 const D = '\x1F'
-function decName(raw: string) { const i = raw.indexOf(D); return i === -1 ? raw : raw.slice(0, i) }
-function periodRange(frequency: 'weekly' | 'fortnightly' | 'monthly') {
-  const now = new Date(); const todayStr = format(now, 'yyyy-MM-dd')
-  if (frequency === 'weekly') {
-    const diff = (now.getDay() === 0 ? -6 : 1) - now.getDay()
-    const mon = new Date(now); mon.setDate(now.getDate() + diff)
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
-    return { start: format(mon, 'yyyy-MM-dd'), end: format(sun, 'yyyy-MM-dd') }
-  }
-  if (frequency === 'fortnightly') {
-    const s = new Date(now); s.setDate(now.getDate() - 13)
-    return { start: format(s, 'yyyy-MM-dd'), end: todayStr }
-  }
-  return { start: format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'), end: format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd') }
+function decFixed(raw: string) {
+  const i = raw.indexOf(D)
+  return i === -1 ? { name: raw, date: '' } : { name: raw.slice(0, i), date: raw.slice(i + 1) }
+}
+function decEnv(raw: string): { name: string; type: '%'|'$'; value: number } {
+  const i = raw.indexOf(D)
+  if (i === -1) return { name: raw, type: '$', value: 0 }
+  const rule = raw.slice(i + 1)
+  return { name: raw.slice(0, i), type: rule[0] as '%'|'$', value: parseFloat(rule.slice(1)) || 0 }
 }
 
-const CAT_ICONS: Record<ExpenseCategory, string> = { food:'🍽️', supermarket:'🛒', transport:'🚌', leisure:'🎬', shopping:'🛍️', health:'💊', housing:'🏠', subscriptions:'📱', debt:'💳', bank:'🏦', other:'···' }
-const CATS = Object.entries(CAT_LABELS) as [ExpenseCategory, string][]
-type ExpType = 'daily' | 'fixed' | 'savings'
+function localToday() { return format(new Date(), 'yyyy-MM-dd') }
+function fmtDay(d: string) {
+  return format(parseISO(d), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
+}
+function getWeekRange(payDayStart: number) {
+  const now = new Date()
+  const d = new Date(now)
+  let diff = d.getDay() - payDayStart
+  if (diff < 0) diff += 7
+  d.setDate(d.getDate() - diff); d.setHours(0, 0, 0, 0)
+  const end = new Date(d); end.setDate(d.getDate() + 6); end.setHours(23, 59, 59, 999)
+  return { start: format(d, 'yyyy-MM-dd'), end: format(end, 'yyyy-MM-dd') }
+}
 
 export default function RegistrarPage() {
-  const { expenses, addExpense, deleteExpense, recurringExpenses, fixedExpenseAllocations,
-    addFixedAllocation, savingsGoals, savingsWithdrawals, addSavingsWithdrawal } = usePocketFlow()
+  const router = useRouter()
+  const { addExpense, addFixedAllocation, addSavingsWithdrawal,
+    incomeSources, incomeEntries, expenses,
+    recurringExpenses, fixedExpenseAllocations,
+    savingsGoals, savingsWithdrawals } = usePocketFlow()
 
   const today = localToday()
-  const [expType, setExpType] = useState<ExpType>('daily')
+  const [expenseType, setExpenseType] = useState<ExpenseType>('daily')
   const [amount, setAmount] = useState('')
+  const [name, setName] = useState('')
+  const [category, setCategory] = useState<ExpenseCategory>('food')
+  const [date, setDate] = useState(today)
   const [note, setNote] = useState('')
-  const [expDate, setExpDate] = useState(today)
-  const [selCat, setSelCat] = useState<ExpenseCategory>('food')
-  const [selectedEnv, setSelectedEnv] = useState<string | null>(null)
-  const [selectedSav, setSelectedSav] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [histVisible, setHistVisible] = useState(false)
-  const amtRef = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const activeFixed = recurringExpenses.filter(e => e.is_active)
+  // Fixed envelope selector
+  const activeFixed = useMemo(() => recurringExpenses.filter(e => e.is_active), [recurringExpenses])
+  const [selectedFixedId, setSelectedFixedId] = useState<string | null>(null)
 
-  const recentExpenses = useMemo(() =>
-    expenses.filter(e => !e.name.startsWith('Ahorro: ')).slice(0, 30),
-    [expenses]
+  // Fixed envelope available balance (all-time deposited − withdrawn)
+  const fixedAvailable = useMemo(() => {
+    const result: Record<string, number> = {}
+    activeFixed.forEach(e => {
+      const deposited = fixedExpenseAllocations
+        .filter(a => a.recurring_expense_id === e.id && a.type !== 'withdrawal')
+        .reduce((s, a) => s + a.amount, 0)
+      const withdrawn = fixedExpenseAllocations
+        .filter(a => a.recurring_expense_id === e.id && a.type === 'withdrawal')
+        .reduce((s, a) => s + a.amount, 0)
+      result[e.id] = deposited - withdrawn
+    })
+    return result
+  }, [activeFixed, fixedExpenseAllocations])
+
+  // Savings goal selector
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null)
+
+  // Savings available balance (current_amount − sum(withdrawals))
+  const savingsAvailable = useMemo(() => {
+    const result: Record<string, number> = {}
+    savingsGoals.forEach(g => {
+      const withdrawn = savingsWithdrawals
+        .filter(w => w.savings_goal_id === g.id)
+        .reduce((s, w) => s + w.amount, 0)
+      result[g.id] = Math.max(0, g.current_amount - withdrawn)
+    })
+    return result
+  }, [savingsGoals, savingsWithdrawals])
+
+  // Income source picker (only when >1 active source, daily expenses only)
+  const activeSources = useMemo(() =>
+    incomeSources.filter(s => s.is_active && s.frequency !== 'once'),
+    [incomeSources]
   )
+  const showSourcePicker = activeSources.length > 1 && expenseType === 'daily'
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const selectedSource = activeSources.find(s => s.id === selectedSourceId)
 
-  const recentGroups = useMemo(() => {
-    const map = new Map<string, typeof expenses>()
-    for (const e of recentExpenses) {
-      if (!map.has(e.expense_date)) map.set(e.expense_date, [])
-      map.get(e.expense_date)!.push(e)
-    }
-    return Array.from(map.keys()).sort((a, b) => b.localeCompare(a)).map(date => ({
-      date, label: fmtShort(date), items: map.get(date)!,
-    }))
-  }, [recentExpenses])
+  const weekRange = useMemo(() => getWeekRange(getSettings().payDayStart), [])
+  const sourceAvailable = useMemo(() => {
+    const result: Record<string, number> = {}
+    activeSources.forEach(src => {
+      const received = incomeEntries
+        .filter(e => e.source_id === src.id && e.received_at >= weekRange.start && e.received_at <= weekRange.end)
+        .reduce((s, e) => s + e.amount, 0)
+      const spent = expenses
+        .filter(e => e.income_source_id === src.id && e.expense_date >= weekRange.start && e.expense_date <= weekRange.end)
+        .reduce((s, e) => s + e.amount, 0)
+      result[src.id] = received - spent
+    })
+    return result
+  }, [activeSources, incomeEntries, expenses, weekRange])
 
-  const typeColor = expType === 'daily' ? 'var(--blue)' : expType === 'fixed' ? 'var(--red)' : 'var(--green)'
-  const typeLabel = expType === 'daily' ? 'Gasto Diario' : expType === 'fixed' ? 'Gasto Fijo' : 'Ahorro'
-
-  async function save() {
+  const isValid = (() => {
     const amt = parseFloat(amount)
-    if (!amt || amt <= 0) return
-    setSaving(true); setSaveError(null)
+    if (!amt || amt <= 0) return false
+    if (expenseType === 'daily') return !!name.trim()
+    if (expenseType === 'fixed') return !!selectedFixedId
+    if (expenseType === 'savings') return !!selectedGoalId
+    return false
+  })()
+
+  async function handleSave() {
+    const amt = parseFloat(amount)
+    if (!isValid) return
+    setSaving(true); setError(null)
     try {
-      if (expType === 'daily') {
-        await addExpense({ name: note.trim() || CAT_LABELS[selCat], amount: amt, category: selCat, expense_date: expDate, is_recurring: false, note: note.trim() || null })
-        setNote('')
-      } else if (expType === 'fixed') {
-        if (!selectedEnv) { setSaveError('Seleccioná un sobre'); setSaving(false); return }
-        await addFixedAllocation(selectedEnv, amt, expDate, undefined, 'withdrawal')
-        setSelectedEnv(null)
+      if (expenseType === 'daily') {
+        await addExpense({
+          name: name.trim(), amount: amt, category,
+          expense_date: date, is_recurring: false,
+          note: note.trim() || null, income_source_id: selectedSourceId || null,
+        })
+      } else if (expenseType === 'fixed') {
+        const envelope = activeFixed.find(e => e.id === selectedFixedId)!
+        const envName = decFixed(envelope.name).name
+        const expense = await addExpense({
+          name: name.trim() || envName, amount: amt,
+          category: envelope.category, expense_date: date, is_recurring: false,
+          note: note.trim() || null, income_source_id: null,
+        })
+        await addFixedAllocation(selectedFixedId!, amt, date, expense.id, 'withdrawal', note.trim() || undefined)
       } else {
-        if (!selectedSav) { setSaveError('Seleccioná un sobre de ahorro'); setSaving(false); return }
-        await addSavingsWithdrawal(selectedSav, amt, undefined, expDate)
-        setSelectedSav(null)
+        const goal = savingsGoals.find(g => g.id === selectedGoalId)!
+        const goalName = decEnv(goal.name).name
+        const expense = await addExpense({
+          name: name.trim() || `Retiro: ${goalName}`, amount: amt,
+          category: 'other', expense_date: date, is_recurring: false,
+          note: note.trim() || null, income_source_id: null,
+        })
+        await addSavingsWithdrawal(selectedGoalId!, amt, expense.id, date, note.trim() || undefined)
       }
-      setAmount(''); setExpDate(today)
-      amtRef.current?.focus()
+      router.push('/gastos')
     } catch (e: any) {
-      setSaveError(e?.message || 'Error al guardar')
-    } finally {
+      setError(e?.message || 'Error al guardar. Intentá de nuevo.')
       setSaving(false)
     }
   }
 
   return (<>
-    <SectionHeader title="Registrar" subtitle="Nuevo movimiento" />
+    <SectionHeader title="Registrar gasto" subtitle={fmtDay(today)} />
+    <div className="scroll-area" style={{ padding: 16 }}>
 
-    <div className="scroll-area" style={{ padding: '12px 16px 24px' }}>
-
-      {/* ── FORMULARIO ── */}
-      <div className="card" style={{ marginBottom: 16, borderTop: `3px solid ${typeColor}` }}>
-
-        {/* Selector de tipo */}
-        <div style={{ display: 'flex', background: 'var(--bg2)', borderRadius: 10, padding: 3, marginBottom: 16 }}>
-          {([['daily', 'Gasto Diario'], ['fixed', 'Gasto Fijo'], ['savings', 'Ahorro']] as const).map(([t, lbl]) => (
-            <button key={t} onClick={() => { setExpType(t); setSaveError(null) }}
-              style={{ flex: 1, padding: '7px 4px', borderRadius: 8, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer', lineHeight: 1.3,
-                background: expType === t ? (t === 'daily' ? 'var(--blue)' : t === 'fixed' ? 'var(--red)' : 'var(--green)') : 'transparent',
-                color: expType === t ? '#fff' : 'var(--text3)',
-                boxShadow: expType === t ? '0 1px 4px rgba(0,0,0,.15)' : 'none' }}>
-              {lbl}
+      {/* Tipo de gasto */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {([
+            { id: 'daily' as const, label: '💳 Diario', desc: 'Gasto común' },
+            { id: 'fixed' as const, label: '📦 Fijo', desc: 'De un sobre' },
+            { id: 'savings' as const, label: '🐷 Ahorro', desc: 'Usar ahorros' },
+          ]).map(t => (
+            <button key={t.id} onClick={() => setExpenseType(t.id)}
+              style={{ flex: 1, padding: '8px 4px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: expenseType === t.id ? 'var(--blue)' : 'var(--bg2)',
+                color: expenseType === t.id ? '#fff' : 'var(--text2)',
+                fontWeight: expenseType === t.id ? 600 : 400, fontSize: 12 }}>
+              <div>{t.label}</div>
+              <div style={{ fontSize: 10, opacity: 0.75, marginTop: 1 }}>{t.desc}</div>
             </button>
           ))}
         </div>
-
-        {/* Monto */}
-        <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 24, fontWeight: 600, color: 'var(--text3)' }}>$</span>
-          <input ref={amtRef} type="number" inputMode="decimal" value={amount} autoFocus
-            onChange={e => setAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
-            placeholder="0.00"
-            style={{ flex: 1, fontSize: 32, fontWeight: 700, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none', borderBottom: `2.5px solid ${typeColor}`, paddingBottom: 2 }} />
-        </div>
-
-        {/* Nombre / nota */}
-        <input type="text" value={note} onChange={e => setNote(e.target.value)}
-          placeholder={expType === 'daily' ? 'Nombre o nota (opcional)…' : 'Nota (opcional)…'}
-          style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, color: 'var(--text2)', border: 'none', background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', outline: 'none', marginBottom: 12 }} />
-
-        {/* Categorías (Diario) */}
-        {expType === 'daily' && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none', marginBottom: 12 }}>
-            {CATS.map(([id, label]) => { const on = selCat === id; return (
-              <button key={id} onClick={() => setSelCat(id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 11px', borderRadius: 20, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, background: on ? CAT_COLORS[id] : 'transparent', color: on ? '#fff' : 'var(--text3)', border: on ? `1.5px solid ${CAT_COLORS[id]}` : '1px solid var(--border2)', fontWeight: on ? 600 : 400 }}>
-                <span>{CAT_ICONS[id]}</span>{label}
-              </button>
-            )})}
-          </div>
-        )}
-
-        {/* Sobres Fijos */}
-        {expType === 'fixed' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: 180, overflowY: 'auto' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Se descontará del sobre seleccionado</div>
-            {activeFixed.length === 0
-              ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Sin sobres fijos. Creá uno en Gastos → Fijos.</div>
-              : activeFixed.map(env => {
-                  const name = decName(env.name)
-                  const envCol = CAT_COLORS[env.category]
-                  const pr = periodRange(env.frequency)
-                  const allocs = fixedExpenseAllocations.filter(a => a.recurring_expense_id === env.id && a.allocated_at >= pr.start && a.allocated_at <= pr.end)
-                  const avail = allocs.filter(a => a.type !== 'withdrawal').reduce((s, a) => s + a.amount, 0) - allocs.filter(a => a.type === 'withdrawal').reduce((s, a) => s + a.amount, 0)
-                  const amtNum = parseFloat(amount) || 0
-                  const quedara = avail - amtNum
-                  const on = selectedEnv === env.id
-                  return (
-                    <button key={env.id} onClick={() => setSelectedEnv(on ? null : env.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: on ? envCol + '18' : 'var(--bg2)', border: on ? `2px solid ${envCol}` : `1.5px solid ${envCol}33` }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: envCol, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-                        {amtNum > 0
-                          ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                              Saldo: <span style={{ fontWeight: 600, color: avail >= 0 ? envCol : 'var(--red)' }}>{formatAUD(avail)}</span>
-                              <span style={{ color: 'var(--text3)' }}> → quedará </span>
-                              <span style={{ fontWeight: 600, color: quedara >= 0 ? envCol : 'var(--red)' }}>{formatAUD(quedara)}</span>
-                            </div>
-                          : <div style={{ fontSize: 11, color: 'var(--text3)' }}>Saldo disponible: <span style={{ color: avail >= 0 ? envCol : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
-                        }
-                      </div>
-                      {on && <span style={{ color: envCol }}>✓</span>}
-                    </button>
-                  )
-                })
-            }
-          </div>
-        )}
-
-        {/* Sobres de Ahorro */}
-        {expType === 'savings' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: 180, overflowY: 'auto' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>Se descontará del ahorro seleccionado</div>
-            {savingsGoals.length === 0
-              ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Sin sobres de ahorro. Creá uno en Ahorros.</div>
-              : savingsGoals.map(goal => {
-                  const name = decName(goal.name)
-                  const totalW = savingsWithdrawals.filter(w => w.savings_goal_id === goal.id).reduce((s, w) => s + w.amount, 0)
-                  const avail = goal.current_amount - totalW
-                  const amtNum = parseFloat(amount) || 0
-                  const quedara = avail - amtNum
-                  const on = selectedSav === goal.id
-                  return (
-                    <button key={goal.id} onClick={() => setSelectedSav(on ? null : goal.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: on ? goal.color + '18' : 'var(--bg2)', border: on ? `2px solid ${goal.color}` : `1.5px solid ${goal.color}33` }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: goal.color, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-                        {amtNum > 0
-                          ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                              Saldo: <span style={{ fontWeight: 600, color: avail >= 0 ? goal.color : 'var(--red)' }}>{formatAUD(avail)}</span>
-                              <span style={{ color: 'var(--text3)' }}> → quedará </span>
-                              <span style={{ fontWeight: 600, color: quedara >= 0 ? goal.color : 'var(--red)' }}>{formatAUD(quedara)}</span>
-                            </div>
-                          : <div style={{ fontSize: 11, color: 'var(--text3)' }}>Saldo disponible: <span style={{ color: avail >= 0 ? goal.color : 'var(--red)', fontWeight: 600 }}>{formatAUD(avail)}</span></div>
-                        }
-                      </div>
-                      {on && <span style={{ color: goal.color }}>✓</span>}
-                    </button>
-                  )
-                })
-            }
-          </div>
-        )}
-
-        {/* Fecha */}
-        <div style={{ position: 'relative', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>📅</span>
-            <span style={{ color: 'var(--text2)' }}>{format(parseISO(expDate), "EEEE d 'de' MMMM", { locale: es })}</span>
-          </div>
-          <input type="date" value={expDate} onChange={e => setExpDate(e.target.value || today)}
-            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
-        </div>
-
-        {saveError && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 10 }}>⚠️ {saveError}</div>}
-
-        <button onClick={save} disabled={saving || !amount}
-          style={{ width: '100%', padding: '13px 0', borderRadius: 10, background: typeColor, color: '#fff', fontSize: 15, fontWeight: 700, border: 'none', cursor: 'pointer', opacity: (!amount || saving) ? .5 : 1 }}>
-          {saving ? 'Guardando…' : `Guardar ${typeLabel}`}
-        </button>
       </div>
 
-      {/* ── ÚLTIMOS MOVIMIENTOS (colapsable) ── */}
-      <button
-        type="button"
-        aria-expanded={histVisible}
-        onClick={() => setHistVisible(v => !v)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg2)', border: 'none', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', marginBottom: histVisible ? 8 : 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>
-          Últimos movimientos {recentExpenses.length > 0 && `(${recentExpenses.length})`}
-        </span>
-        {histVisible
-          ? <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text3)' }}><ChevronUp size={14} /> Ocultar</span>
-          : <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--blue)' }}><ChevronDown size={14} /> Ver todo</span>
-        }
+      {/* Monto */}
+      <div style={{ background: 'var(--bg2)', borderRadius: 'var(--radius)', padding: '16px 20px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 28, fontWeight: 600, color: 'var(--text3)' }}>$</span>
+        <input
+          type="number" inputMode="decimal" autoFocus
+          value={amount} onChange={e => setAmount(e.target.value)}
+          placeholder="0.00"
+          style={{ flex: 1, fontSize: 36, fontWeight: 700, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none', letterSpacing: -1 }}
+        />
+      </div>
+
+      {/* Selector de sobre fijo */}
+      {expenseType === 'fixed' && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>
+            ¿De qué sobre se descuenta?
+          </div>
+          {activeFixed.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text3)' }}>No tenés gastos fijos configurados</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {activeFixed.map(e => {
+                const envName = decFixed(e.name).name
+                const available = fixedAvailable[e.id] ?? 0
+                const color = CAT_COLORS[e.category]
+                const selected = selectedFixedId === e.id
+                return (
+                  <button key={e.id} onClick={() => setSelectedFixedId(selected ? null : e.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                      border: selected ? `1.5px solid ${color}` : '1px solid var(--border)',
+                      background: selected ? color + '18' : 'var(--bg2)', cursor: 'pointer', textAlign: 'left' }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: selected ? 600 : 400, color: 'var(--text1)' }}>{envName}</span>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: available >= 0 ? color : 'var(--red)' }}>{formatAUD(available)}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>disponible</div>
+                    </div>
+                    {selected && <Check size={14} color={color} strokeWidth={2.5} />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Selector de meta de ahorro */}
+      {expenseType === 'savings' && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>
+            ¿De qué ahorro se descuenta?
+          </div>
+          {savingsGoals.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text3)' }}>No tenés metas de ahorro configuradas</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {savingsGoals.map(g => {
+                const goalName = decEnv(g.name).name
+                const available = savingsAvailable[g.id] ?? 0
+                const selected = selectedGoalId === g.id
+                return (
+                  <button key={g.id} onClick={() => setSelectedGoalId(selected ? null : g.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                      border: selected ? `1.5px solid ${g.color}` : '1px solid var(--border)',
+                      background: selected ? g.color + '18' : 'var(--bg2)', cursor: 'pointer', textAlign: 'left' }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: g.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: selected ? 600 : 400, color: 'var(--text1)' }}>{goalName}</span>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: available > 0 ? g.color : 'var(--red)' }}>{formatAUD(available)}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>ahorrado</div>
+                    </div>
+                    {selected && <Check size={14} color={g.color} strokeWidth={2.5} />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Nombre / Descripción */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>
+          {expenseType === 'daily' ? '¿En qué gastaste?' : 'Descripción (opcional)'}
+        </div>
+        <input
+          value={name} onChange={e => setName(e.target.value)}
+          placeholder={
+            expenseType === 'daily' ? 'Ej: Almuerzo, Nafta, Ropa…' :
+            expenseType === 'fixed' ? 'Ej: Pago parcial, Cuota…' : 'Ej: Ropa de vacaciones…'
+          }
+          style={{ width: '100%', fontSize: 15, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none' }}
+        />
+      </div>
+
+      {/* Categoría (solo para gasto diario) */}
+      {expenseType === 'daily' && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 10 }}>Categoría</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {CATS.map(([cat, lbl]) => {
+              const active = category === cat
+              return (
+                <button key={cat} onClick={() => setCategory(cat)}
+                  style={{ padding: '6px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: active ? 600 : 400,
+                    background: active ? CAT_COLORS[cat] : 'var(--bg2)', color: active ? '#fff' : 'var(--text2)' }}>
+                  {CAT_ICONS[cat]} {lbl}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Fecha */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Fecha</div>
+        <div style={{ position: 'relative' }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--blue)', cursor: 'pointer' }}>📅 {fmtDay(date)}</div>
+          <input type="date" value={date} onChange={e => setDate(e.target.value || today)}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+        </div>
+      </div>
+
+      {/* Nota opcional */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>Nota (opcional)</div>
+        <input
+          value={note} onChange={e => setNote(e.target.value)}
+          placeholder="Agregar detalle…"
+          style={{ width: '100%', fontSize: 14, color: 'var(--text1)', border: 'none', background: 'transparent', outline: 'none' }}
+        />
+      </div>
+
+      {/* Atribución a ingreso (solo gasto diario con >1 fuente activa) */}
+      {showSourcePicker && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>
+            ¿Este gasto corresponde a un ingreso en particular?
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {activeSources.map(src => {
+              const selected = selectedSourceId === src.id
+              return (
+                <button key={src.id} onClick={() => setSelectedSourceId(selected ? null : src.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: selected ? `1.5px solid ${src.color}` : '1px solid var(--border)',
+                    background: selected ? src.color + '18' : 'var(--bg2)', cursor: 'pointer', textAlign: 'left' }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: src.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: selected ? 600 : 400, color: 'var(--text1)' }}>{src.name}</span>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: (sourceAvailable[src.id] ?? 0) >= 0 ? src.color : 'var(--red)' }}>{formatAUD(sourceAvailable[src.id] ?? 0)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>disponible</div>
+                  </div>
+                  {selected && <Check size={14} color={src.color} strokeWidth={2.5} />}
+                </button>
+              )
+            })}
+            <button onClick={() => setSelectedSourceId(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                border: selectedSourceId === null ? '1.5px solid var(--text3)' : '1px solid var(--border)',
+                background: selectedSourceId === null ? 'var(--bg3)' : 'var(--bg2)', cursor: 'pointer' }}>
+              <span style={{ fontSize: 13, color: 'var(--text2)' }}>No, gasto general</span>
+              {selectedSourceId === null && <Check size={14} color="var(--text3)" strokeWidth={2.5} style={{ marginLeft: 'auto' }} />}
+            </button>
+          </div>
+          {selectedSource && (
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: selectedSource.color + '18', border: `1px solid ${selectedSource.color}44`, fontSize: 12, color: selectedSource.color, fontWeight: 500 }}>
+              Te quedan <strong>{formatAUD(sourceAvailable[selectedSource.id] ?? 0)}</strong> libres en <strong>{selectedSource.name}</strong> esta semana
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+
+      <button onClick={handleSave} disabled={saving || !isValid}
+        style={{ width: '100%', padding: 14, borderRadius: 'var(--radius-sm)', background: 'var(--blue)', color: '#fff', fontSize: 15, fontWeight: 600, border: 'none', cursor: 'pointer',
+          opacity: (!isValid || saving) ? .5 : 1, marginBottom: 4 }}>
+        {saving ? 'Guardando…' : `Guardar${amount ? ' — ' + (isNaN(parseFloat(amount)) ? '' : formatAUD(parseFloat(amount))) : ''}`}
       </button>
 
-      {histVisible && (
-        recentExpenses.length === 0
-          ? <EmptyState message="Sin movimientos aún" />
-          : recentGroups.map(({ date, label, items }) => {
-              const dayTotal = items.reduce((s, e) => s + e.amount, 0)
-              return (
-                <div key={date} className="card" style={{ marginBottom: 8, padding: '10px 14px', borderLeft: '3px solid var(--red)' }}>
-                  <div className="flex justify-between" style={{ marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red)' }}>−{formatAUD(dayTotal)}</span>
-                  </div>
-                  {items.map(e => (
-                    <div key={e.id} className="flex items-center gap-2 py-1.5" style={{ borderTop: '0.5px solid var(--border)' }}>
-                      <div style={{ fontSize: 14, width: 26, height: 26, borderRadius: 7, background: CAT_COLORS[e.category] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{CAT_ICONS[e.category]}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABELS[e.category]}</div>
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)', whiteSpace: 'nowrap' }}>−{formatAUD(e.amount)}</span>
-                      <button onClick={() => deleteExpense(e.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )
-            })
-      )}
+      <div style={{ height: 80 }} />
     </div>
     <BottomNav />
   </>)
