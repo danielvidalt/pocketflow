@@ -44,3 +44,7 @@ body{background:var(--bg3);color:var(--text1);font-family:-apple-system,BlinkMac
 .splash-out{animation:splashFade .4s ease forwards}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
 input[type=number]{-moz-appearance:textfield}
+@media(min-width:768px){
+  .app-shell{max-width:680px}
+  .bottom-nav{max-width:680px}
+}
