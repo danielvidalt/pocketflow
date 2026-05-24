@@ -7,7 +7,6 @@ import BottomNav from '@/components/BottomNav'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Check } from 'lucide-react'
-import { getSettings } from '@/lib/settings'
 
 type ExpenseType = 'daily' | 'fixed' | 'savings'
 
@@ -38,15 +37,6 @@ function fmtGroupDate(d: string) {
   if (isToday(date)) return 'Hoy'
   if (isYesterday(date)) return 'Ayer'
   return format(date, "EEEE d 'de' MMMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
-}
-function getWeekRange(payDayStart: number) {
-  const now = new Date()
-  const d = new Date(now)
-  let diff = d.getDay() - payDayStart
-  if (diff < 0) diff += 7
-  d.setDate(d.getDate() - diff); d.setHours(0, 0, 0, 0)
-  const end = new Date(d); end.setDate(d.getDate() + 6); end.setHours(23, 59, 59, 999)
-  return { start: format(d, 'yyyy-MM-dd'), end: format(end, 'yyyy-MM-dd') }
 }
 
 export default function RegistrarPage() {
@@ -106,20 +96,19 @@ export default function RegistrarPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const selectedSource = activeSources.find(s => s.id === selectedSourceId)
 
-  const weekRange = useMemo(() => getWeekRange(getSettings().payDayStart), [])
   const sourceAvailable = useMemo(() => {
     const result: Record<string, number> = {}
     activeSources.forEach(src => {
       const received = incomeEntries
-        .filter(e => e.source_id === src.id && e.received_at >= weekRange.start && e.received_at <= weekRange.end)
+        .filter(e => e.source_id === src.id)
         .reduce((s, e) => s + e.amount, 0)
       const spent = expenses
-        .filter(e => e.income_source_id === src.id && e.expense_date >= weekRange.start && e.expense_date <= weekRange.end)
+        .filter(e => e.income_source_id === src.id)
         .reduce((s, e) => s + e.amount, 0)
       result[src.id] = received - spent
     })
     return result
-  }, [activeSources, incomeEntries, expenses, weekRange])
+  }, [activeSources, incomeEntries, expenses])
 
   // History: classify all expenses by type
   const fixedWithdrawalIds = useMemo(() =>
@@ -387,7 +376,7 @@ export default function RegistrarPage() {
           </div>
           {selectedSource && (
             <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: selectedSource.color + '18', border: `1px solid ${selectedSource.color}44`, fontSize: 12, color: selectedSource.color, fontWeight: 500 }}>
-              Te quedan <strong>{formatAUD(sourceAvailable[selectedSource.id] ?? 0)}</strong> libres en <strong>{selectedSource.name}</strong> esta semana
+              Te quedan <strong>{formatAUD(sourceAvailable[selectedSource.id] ?? 0)}</strong> disponibles de <strong>{selectedSource.name}</strong>
             </div>
           )}
         </div>
