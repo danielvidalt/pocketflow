@@ -1,11 +1,10 @@
 'use client'
 import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { usePocketFlow } from '@/lib/store'
 import { formatAUD, CAT_LABELS, CAT_COLORS, ExpenseCategory } from '@/lib/types'
 import { SectionHeader } from '@/components/ui'
 import BottomNav from '@/components/BottomNav'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Check } from 'lucide-react'
 import { getSettings } from '@/lib/settings'
@@ -34,6 +33,12 @@ function localToday() { return format(new Date(), 'yyyy-MM-dd') }
 function fmtDay(d: string) {
   return format(parseISO(d), "EEEE, d MMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
 }
+function fmtGroupDate(d: string) {
+  const date = parseISO(d)
+  if (isToday(date)) return 'Hoy'
+  if (isYesterday(date)) return 'Ayer'
+  return format(date, "EEEE d 'de' MMMM", { locale: es }).replace(/\b\w/g, c => c.toUpperCase())
+}
 function getWeekRange(payDayStart: number) {
   const now = new Date()
   const d = new Date(now)
@@ -45,7 +50,6 @@ function getWeekRange(payDayStart: number) {
 }
 
 export default function RegistrarPage() {
-  const router = useRouter()
   const { addExpense, addFixedAllocation, addSavingsWithdrawal,
     incomeSources, incomeEntries, expenses,
     recurringExpenses, fixedExpenseAllocations,
@@ -65,7 +69,6 @@ export default function RegistrarPage() {
   const activeFixed = useMemo(() => recurringExpenses.filter(e => e.is_active), [recurringExpenses])
   const [selectedFixedId, setSelectedFixedId] = useState<string | null>(null)
 
-  // Fixed envelope available balance (all-time deposited − withdrawn)
   const fixedAvailable = useMemo(() => {
     const result: Record<string, number> = {}
     activeFixed.forEach(e => {
@@ -83,7 +86,6 @@ export default function RegistrarPage() {
   // Savings goal selector
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null)
 
-  // Savings available balance (current_amount − sum(withdrawals))
   const savingsAvailable = useMemo(() => {
     const result: Record<string, number> = {}
     savingsGoals.forEach(g => {
@@ -95,7 +97,7 @@ export default function RegistrarPage() {
     return result
   }, [savingsGoals, savingsWithdrawals])
 
-  // Income source picker (only when >1 active source, daily expenses only)
+  // Income source picker
   const activeSources = useMemo(() =>
     incomeSources.filter(s => s.is_active && s.frequency !== 'once'),
     [incomeSources]
@@ -118,6 +120,32 @@ export default function RegistrarPage() {
     })
     return result
   }, [activeSources, incomeEntries, expenses, weekRange])
+
+  // History: classify all expenses by type
+  const fixedWithdrawalIds = useMemo(() =>
+    new Set(fixedExpenseAllocations.filter(a => a.type === 'withdrawal' && a.expense_id).map(a => a.expense_id!)),
+    [fixedExpenseAllocations]
+  )
+  const savingsWithdrawalIds = useMemo(() =>
+    new Set(savingsWithdrawals.filter(w => w.expense_id).map(w => w.expense_id!)),
+    [savingsWithdrawals]
+  )
+
+  const historyGroups = useMemo(() => {
+    const sorted = [...expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date) || b.created_at.localeCompare(a.created_at))
+    const map = new Map<string, typeof expenses>()
+    for (const e of sorted) {
+      if (!map.has(e.expense_date)) map.set(e.expense_date, [])
+      map.get(e.expense_date)!.push(e)
+    }
+    return Array.from(map.entries()).map(([date, items]) => ({ date, items }))
+  }, [expenses])
+
+  function getExpenseKind(e: typeof expenses[0]): { label: string; color: string } {
+    if (fixedWithdrawalIds.has(e.id)) return { label: '📦 Fijo', color: CAT_COLORS[e.category] }
+    if (savingsWithdrawalIds.has(e.id) || e.name.startsWith('Ahorro: ')) return { label: '🐷 Ahorro', color: 'var(--green)' }
+    return { label: '💳 Diario', color: 'var(--blue)' }
+  }
 
   const isValid = (() => {
     const amt = parseFloat(amount)
@@ -158,15 +186,18 @@ export default function RegistrarPage() {
         })
         await addSavingsWithdrawal(selectedGoalId!, amt, expense.id, date, note.trim() || undefined)
       }
-      router.push('/gastos')
+      // Reset form, stay on page so the history updates
+      setAmount(''); setName(''); setNote(''); setDate(today)
+      setSelectedFixedId(null); setSelectedGoalId(null); setSelectedSourceId(null)
     } catch (e: any) {
       setError(e?.message || 'Error al guardar. Intentá de nuevo.')
+    } finally {
       setSaving(false)
     }
   }
 
   return (<>
-    <SectionHeader title="Registrar gasto" subtitle={fmtDay(today)} />
+    <SectionHeader title="Registrar" subtitle={fmtDay(today)} />
     <div className="scroll-area" style={{ padding: 16 }}>
 
       {/* Tipo de gasto */}
@@ -323,7 +354,7 @@ export default function RegistrarPage() {
         />
       </div>
 
-      {/* Atribución a ingreso (solo gasto diario con >1 fuente activa) */}
+      {/* Atribución a ingreso */}
       {showSourcePicker && (
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>
@@ -370,9 +401,51 @@ export default function RegistrarPage() {
 
       <button onClick={handleSave} disabled={saving || !isValid}
         style={{ width: '100%', padding: 14, borderRadius: 'var(--radius-sm)', background: 'var(--blue)', color: '#fff', fontSize: 15, fontWeight: 600, border: 'none', cursor: 'pointer',
-          opacity: (!isValid || saving) ? .5 : 1, marginBottom: 4 }}>
+          opacity: (!isValid || saving) ? .5 : 1, marginBottom: 20 }}>
         {saving ? 'Guardando…' : `Guardar${amount ? ' — ' + (isNaN(parseFloat(amount)) ? '' : formatAUD(parseFloat(amount))) : ''}`}
       </button>
+
+      {/* ── HISTORIAL ── */}
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+        Historial de movimientos
+      </div>
+
+      {historyGroups.length === 0 ? (
+        <div className="card" style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: 24 }}>
+          Todavía no hay registros
+        </div>
+      ) : (
+        historyGroups.map(({ date: groupDate, items }) => (
+          <div key={groupDate} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 6, paddingLeft: 2 }}>
+              {fmtGroupDate(groupDate)}
+            </div>
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              {items.map((e, i) => {
+                const kind = getExpenseKind(e)
+                return (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                    borderBottom: i < items.length - 1 ? '0.5px solid var(--border)' : 'none' }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>{CAT_ICONS[e.category]}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {e.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: kind.color, fontWeight: 500, marginTop: 1 }}>
+                        {kind.label}
+                        {e.note && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> · {e.note}</span>}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text1)', flexShrink: 0 }}>
+                      −{formatAUD(e.amount)}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))
+      )}
 
       <div style={{ height: 80 }} />
     </div>
