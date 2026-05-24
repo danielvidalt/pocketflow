@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { getClient } from '@/lib/supabase'
 
 export default function LoginPage(){
   const [email,setEmail]=useState('')
@@ -13,12 +14,7 @@ export default function LoginPage(){
   async function handleLogin(){
     setLoading(true); setError('')
     try {
-      const {createBrowserClient} = await import('@supabase/ssr')
-      const sb = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      const {error:err} = await sb.auth.signInWithPassword({email,password})
+      const {error:err} = await getClient().auth.signInWithPassword({email,password})
       if(err){setError('Email o contraseña incorrectos');setLoading(false);return}
       router.push('/')
       router.refresh()
