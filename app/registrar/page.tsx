@@ -92,7 +92,7 @@ export default function RegistrarPage() {
     incomeSources.filter(s => s.is_active && s.frequency !== 'once'),
     [incomeSources]
   )
-  const showSourcePicker = activeSources.length > 1 && expenseType === 'daily'
+  const showSourcePicker = activeSources.length > 1
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const selectedSource = activeSources.find(s => s.id === selectedSourceId)
 
@@ -162,7 +162,7 @@ export default function RegistrarPage() {
         const expense = await addExpense({
           name: name.trim() || envName, amount: amt,
           category: envelope.category, expense_date: date, is_recurring: false,
-          note: note.trim() || null, income_source_id: null,
+          note: note.trim() || null, income_source_id: selectedSourceId || null,
         })
         await addFixedAllocation(selectedFixedId!, amt, date, expense.id, 'withdrawal', note.trim() || undefined)
       } else {
@@ -171,7 +171,7 @@ export default function RegistrarPage() {
         const expense = await addExpense({
           name: name.trim() || `Retiro: ${goalName}`, amount: amt,
           category: 'other', expense_date: date, is_recurring: false,
-          note: note.trim() || null, income_source_id: null,
+          note: note.trim() || null, income_source_id: selectedSourceId || null,
         })
         await addSavingsWithdrawal(selectedGoalId!, amt, expense.id, date, note.trim() || undefined)
       }
