@@ -117,10 +117,13 @@ export const usePocketFlow = create<State>((set,get) => ({
 
   addExpense: async (data) => {
     const user = await getUser(); const db = getClient()
-    // Usa 'other' si la categoría no está en el constraint actual de la DB
     const category = DB_VALID_CATEGORIES.has(data.category) ? data.category : 'other'
+    const { income_source_id, ...coreData } = data
+    const payload: Record<string, unknown> = { ...coreData, category, user_id: user.id }
+    // Solo incluir income_source_id si tiene valor — la columna puede no existir aún en la DB
+    if (income_source_id != null) payload.income_source_id = income_source_id
     const { data:row, error } = await db.from('expenses')
-      .insert({...data, category, user_id:user.id})
+      .insert(payload)
       .select().single()
     if (error) throw new Error(error.message)
     if (row) set(s=>({expenses:[row,...s.expenses]}))
