@@ -115,18 +115,17 @@ export default function HomePage(){
   const gastadoRegularPeriod=useMemo(()=>
     periodExps.filter(e=>!e.name.startsWith('Ahorro: ')).reduce((s,e)=>s+e.amount,0),
     [periodExps])
-  // Sobres fijos: max(monto planificado del período, depósitos reales en el período)
+  // Sobres fijos: usa depósitos reales del período (no planificado escalado)
   const totalFixedCommitted=useMemo(()=>
     recurringExpenses.filter(e=>e.is_active).reduce((total,e)=>{
-      const planned=e.amount*(multiplier/FREQ_DIVISORS[e.frequency])
       const deposited=fixedExpenseAllocations
         .filter(a=>a.recurring_expense_id===e.id&&a.type!=='withdrawal'&&a.allocated_at>=psStr&&a.allocated_at<=peStr)
         .reduce((s,a)=>s+a.amount,0)
-      return total+Math.max(planned,deposited)
+      return total+deposited
     },0),
     [recurringExpenses,fixedExpenseAllocations,period,settings.fortnightDir,settings.payDayStart])
-  // Sobres de ahorro: max(contribución planificada del período, ahorros reales en el período)
-  const totalSavingsCommitted=useMemo(()=>{
+  // Ahorros planificados: solo para mostrar en pantalla
+  const savingsPlanned=useMemo(()=>{
     const SEP='\x1F'
     return savingsGoals.reduce((total,g)=>{
       const i=g.name.indexOf(SEP)
@@ -135,12 +134,11 @@ export default function HomePage(){
       const freq=g.frequency||'monthly'
       const freqDiv=FREQ_DIVISORS[freq]||4.33
       const planned=type==='%'?weeklyTotal*multiplier*value/100:value*(multiplier/freqDiv)
-      const goalName=i===-1?g.name:g.name.slice(0,i)
-      const deposited=periodExps.filter(e=>e.name===`Ahorro: ${goalName}`).reduce((s,e)=>s+e.amount,0)
-      return total+Math.max(planned,deposited)
+      return total+planned
     },0)
-  },[savingsGoals,periodExps,weeklyTotal,multiplier])
-  const totalAGastar=collectedThisPeriod-gastadoRegularPeriod-totalFixedCommitted-totalSavingsCommitted
+  },[savingsGoals,weeklyTotal,multiplier])
+  // periodSpent ya incluye gastos diarios + contribuciones a ahorros ("Ahorro: X")
+  const totalAGastar=collectedThisPeriod-periodSpent-totalFixedCommitted
   const remaining=collectedThisPeriod-periodSpent-actualFixedSpent
 
   const todayExps=useMemo(()=>expenses.filter(e=>isToday(parseISO(e.expense_date))),[expenses])
@@ -190,7 +188,7 @@ export default function HomePage(){
         <div style={{fontSize:44,fontWeight:700,color:'#fff',letterSpacing:-1,lineHeight:1}}>{formatAUD(Math.max(0,totalAGastar))}</div>
         <div style={{fontSize:12,color:'rgba(255,255,255,.7)',marginTop:8,display:'flex',gap:12}}>
           <span>Disponible: <span style={{fontWeight:600,color:remaining>=0?'rgba(255,255,255,.95)':'rgba(255,180,180,1)'}}>{formatAUD(remaining)}</span></span>
-          {totalSavingsCommitted>0&&<span>Ahorros reservados: <span style={{fontWeight:600,color:'rgba(255,255,255,.9)'}}>{formatAUD(totalSavingsCommitted)}</span></span>}
+          {savingsPlanned>0&&<span>Ahorros planificados: <span style={{fontWeight:600,color:'rgba(255,255,255,.9)'}}>{formatAUD(savingsPlanned)}</span></span>}
         </div>
         <div style={{height:5,background:'rgba(255,255,255,.2)',borderRadius:3,marginTop:12,overflow:'hidden'}}>
           <div style={{height:'100%',background:'#fff',borderRadius:3,width:`${Math.min(100,collectedPct)}%`,transition:'width .4s'}}/>

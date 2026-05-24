@@ -71,32 +71,17 @@ export default function ResumenPage() {
   const gastadoTotal = gastadoRegular + gastadoAhorros
   const multiplier = period === 'week' ? 1 : period === 'fortnight' ? 2 : 4.33
   const weeklyTotal = incomeSources.filter(s => s.is_active).reduce((sum, s) => sum + weeklyEquivalent(s), 0)
-  // Sobres fijos: max(monto planificado del período, depósitos reales en el período)
+  // Sobres fijos: usa depósitos reales del período (no planificado escalado)
   const totalFixedCommitted = useMemo(() =>
     recurringExpenses.filter(e => e.is_active).reduce((total, e) => {
-      const planned = e.amount * (multiplier / FREQ_DIVISORS[e.frequency])
       const deposited = fixedExpenseAllocations
         .filter(a => a.recurring_expense_id === e.id && a.type !== 'withdrawal' && a.allocated_at >= rangeStartStr && a.allocated_at <= rangeEndStr)
         .reduce((s, a) => s + a.amount, 0)
-      return total + Math.max(planned, deposited)
+      return total + deposited
     }, 0),
     [recurringExpenses, fixedExpenseAllocations, period])
-  // Sobres de ahorro: max(contribución planificada del período, ahorros reales en el período)
-  const totalSavingsCommitted = useMemo(() => {
-    const SEP = '\x1F'
-    return savingsGoals.reduce((total, g) => {
-      const i = g.name.indexOf(SEP)
-      const type = i === -1 ? '$' as const : g.name[i + 1] as '%' | '$'
-      const value = i === -1 ? 0 : (parseFloat(g.name.slice(i + 2)) || 0)
-      const freq = g.frequency || 'monthly'
-      const freqDiv = FREQ_DIVISORS[freq] || 4.33
-      const planned = type === '%' ? weeklyTotal * multiplier * value / 100 : value * (multiplier / freqDiv)
-      const goalName = i === -1 ? g.name : g.name.slice(0, i)
-      const deposited = exps.filter(e => e.name === `Ahorro: ${goalName}`).reduce((s, e) => s + e.amount, 0)
-      return total + Math.max(planned, deposited)
-    }, 0)
-  }, [savingsGoals, exps, weeklyTotal, multiplier])
-  const totalAGastar = cobrado - gastadoRegular - totalFixedCommitted - totalSavingsCommitted
+  // gastadoTotal ya incluye gastos diarios + contribuciones a ahorros ("Ahorro: X")
+  const totalAGastar = cobrado - gastadoTotal - totalFixedCommitted
 
   const catDist = useMemo(() => {
     const m: Partial<Record<ExpenseCategory, number>> = {}
